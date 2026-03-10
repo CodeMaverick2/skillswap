@@ -1,0 +1,186 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  # ── 1. Unit / Integration tests (in-memory MongoDB, no external deps) ──────
+  test:
+    name: Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test suite
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-secret-do-not-use-in-prod
+          JWT_EXPIRES_IN: 15m
+          REFRESH_TOKEN_EXPIRES_IN: 7d
+          BCRYPT_ROUNDS: 4
+        run: npm test
+
+  # ── 2. Coverage report ──────────────────────────────────────────────────────
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-secret-do-not-use-in-prod
+          JWT_EXPIRES_IN: 15m
+          REFRESH_TOKEN_EXPIRES_IN: 7d
+          BCRYPT_ROUNDS: 4
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: backend/coverage/
+          retention-days: 7
+
+  # ── 3. Server startup smoke test (real MongoDB service container) ───────────
+  smoke:
+    name: Server Startup & Smoke Test
+    runs-on: ubuntu-latest
+    needs: test
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start server in background
+        env:
+          NODE_ENV: development
+          PORT: 5000
+          MONGODB_URI: mongodb://localhost:27017/skillswap_ci
+          JWT_SECRET: ci-smoke-test-secret
+          JWT_EXPIRES_IN: 15m
+          REFRESH_TOKEN_EXPIRES_IN: 7d
+          BCRYPT_ROUNDS: 4
+        run: node server.js &
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for server to start..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:5000/api/health > /dev/null; then
+              echo "Server is up!"
+              break
+            fi
+            echo "Attempt $i/20 — not ready yet, retrying in 2s..."
+            sleep 2
+          done
+          curl -sf http://localhost:5000/api/health || (echo "Server failed to start" && exit 1)
+
+      - name: Smoke test — health endpoint
+        run: |
+          HEALTH=$(curl -sf http://localhost:5000/api/health)
+          echo "Health response: $HEALTH"
+          echo "$HEALTH" | grep -q '"status":"ok"'        || (echo "FAIL: status not ok"        && exit 1)
+          echo "$HEALTH" | grep -q '"db":"connected"'     || (echo "FAIL: db not connected"     && exit 1)
+          echo "Health check passed"
+
+      - name: Smoke test — register new user
+        run: |
+          RES=$(curl -sf -X POST http://localhost:5000/api/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"email":"smoke@ci.test","username":"smokeuser","password":"Smoke1234!","confirmPassword":"Smoke1234!"}')
+          echo "Register response: $RES"
+          echo "$RES" | grep -q '"success":true' || (echo "FAIL: register did not succeed" && exit 1)
+          echo "Register passed"
+
+      - name: Smoke test — login
+        run: |
+          LOGIN=$(curl -sf -X POST http://localhost:5000/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"smoke@ci.test","password":"Smoke1234!"}')
+          echo "Login response: $LOGIN"
+          echo "$LOGIN" | grep -q '"success":true' || (echo "FAIL: login did not succeed" && exit 1)
+
+          # Extract access token for next step
+          ACCESS_TOKEN=$(echo "$LOGIN" | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4)
+          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+          echo "Login passed"
+
+      - name: Smoke test — authenticated GET /api/users/me
+        run: |
+          ME=$(curl -sf http://localhost:5000/api/users/me \
+            -H "Authorization: Bearer $ACCESS_TOKEN")
+          echo "GET /me response: $ME"
+          echo "$ME" | grep -q '"success":true'       || (echo "FAIL: /me not success"   && exit 1)
+          echo "$ME" | grep -q '"username":"smokeuser"' || (echo "FAIL: wrong username"  && exit 1)
+          echo "GET /me passed"
+
+      - name: Smoke test — unknown route returns 404
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/does-not-exist)
+          [ "$STATUS" = "404" ] || (echo "FAIL: expected 404, got $STATUS" && exit 1)
+          echo "404 check passed"
+
+      - name: Smoke test — unauthenticated request returns 401
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/users/me)
+          [ "$STATUS" = "401" ] || (echo "FAIL: expected 401, got $STATUS" && exit 1)
+          echo "401 check passed"
