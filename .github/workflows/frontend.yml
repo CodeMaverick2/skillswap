@@ -1,0 +1,153 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  # ── 1. TypeScript type check ────────────────────────────────────────────────
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+  # ── 2. Full Metro bundle build (web export) ─────────────────────────────────
+  # expo export compiles every file through Metro — catches broken imports,
+  # missing modules, bad re-exports, and runtime-visible errors.
+  # This is the closest thing to a "start and check" for a React Native / Expo app
+  # without needing a physical device or simulator.
+  build:
+    name: Expo Web Export (Bundle Check)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Export web bundle
+        env:
+          # Provide a dummy API URL so axios doesn't error at import time
+          EXPO_PUBLIC_API_URL: http://localhost:5000/api
+        run: npx expo export --platform web --output-dir /tmp/expo-web-dist
+
+      - name: Verify output exists
+        run: |
+          ls /tmp/expo-web-dist/
+          [ -f /tmp/expo-web-dist/index.html ] || (echo "FAIL: index.html not found" && exit 1)
+          echo "Web bundle produced successfully"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-web-bundle
+          path: /tmp/expo-web-dist/
+          retention-days: 3
+
+  # ── 3. Metro dev-server startup check ──────────────────────────────────────
+  # Starts the Metro bundler (the actual Expo dev server) and polls until it
+  # responds on port 8081, then immediately shuts it down.
+  # This mirrors exactly what `expo start` does in development.
+  metro-start:
+    name: Metro Dev Server Startup
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start Expo dev server in background
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:5000/api
+          CI: 1
+        # --no-dev disables developer tools overlay (cleaner output)
+        # --non-interactive prevents Expo from trying to open a browser/QR code
+        run: npx expo start --port 8081 --no-dev --non-interactive &
+
+      - name: Wait for Metro bundler to be ready
+        run: |
+          echo "Waiting for Metro to come up on :8081..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s http://localhost:8081/status 2>/dev/null || true)
+            if [ "$STATUS" = "packager-status:running" ]; then
+              echo "Metro is ready!"
+              break
+            fi
+            echo "Attempt $i/30 — got '$STATUS', retrying in 3s..."
+            sleep 3
+          done
+          FINAL=$(curl -s http://localhost:8081/status 2>/dev/null || true)
+          [ "$FINAL" = "packager-status:running" ] || (echo "FAIL: Metro did not start within 90s" && exit 1)
+
+      - name: Check Metro status endpoint
+        run: |
+          STATUS=$(curl -sf http://localhost:8081/status)
+          echo "Metro status: $STATUS"
+          # Metro returns the plain text string "packager-status:running"
+          [ "$STATUS" = "packager-status:running" ] || (echo "FAIL: Metro not running, got: $STATUS" && exit 1)
+          echo "Metro startup check passed"
+
+      - name: Shut down Metro
+        if: always()
+        run: pkill -f "expo start" || true
+
+  # ── 4. Expo Doctor (SDK & dependency compatibility) ─────────────────────────
+  expo-doctor:
+    name: Expo Doctor
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run expo-doctor
+        run: npx expo-doctor
