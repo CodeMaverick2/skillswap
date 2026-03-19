@@ -1,0 +1,38 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1B3A"/>
+      <stop offset="100%" stop-color="#0D0C18"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8B7FFF"/>
+      <stop offset="100%" stop-color="#6C63FF"/>
+    </linearGradient>
+    <linearGradient id="tealGrad" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#5EEDC8"/>
+      <stop offset="100%" stop-color="#43D9AD"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Purple: right-pointing arrow (top) -->
+  <g filter="url(#glow)">
+    <rect x="120" y="368" width="586" height="76" rx="38" fill="url(#purpleGrad)"/>
+    <polygon points="706,310 900,406 706,502" fill="#6C63FF"/>
+  </g>
+
+  <!-- Teal: left-pointing arrow (bottom) -->
+  <g filter="url(#glow)">
+    <rect x="318" y="580" width="586" height="76" rx="38" fill="url(#tealGrad)"/>
+    <polygon points="318,522 124,618 318,714" fill="#43D9AD"/>
+  </g>
+</svg>
