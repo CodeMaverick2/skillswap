@@ -32,11 +32,21 @@
       "expo-secure-store",
       [
         "expo-splash-screen",
-        { "backgroundColor": "#0D0C18", "image": "./assets/images/splash.png" }
-      ]
+        {
+          "backgroundColor": "#0D0C18",
+          "image": "./assets/images/splash.png"
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7735f3b6-e9bd-4738-9538-204d28d0625d"
+      }
+    },
+    "owner": "tejas1114"
   }
 }
