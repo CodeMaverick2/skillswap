@@ -1,4 +1,4 @@
-import React, { useState, forwardRef } from 'react'
+import React, { useState, forwardRef, useCallback } from 'react'
 import {
   View,
   TextInput,
@@ -81,19 +81,22 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 
         <TextInput
           ref={ref}
+          {...props}
           style={[{
             flex: 1,
             fontFamily: 'Inter_400Regular',
             fontSize: 15,
             color: colors.textPrimary,
+            backgroundColor: 'transparent',
             paddingVertical: Platform.OS === 'ios' ? spacing.md : spacing.sm,
           }, style]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={isPassword && !showPassword}
           selectionColor={colors.primary}
+          textContentType={isPassword ? 'oneTimeCode' : props.textContentType}
+          autoComplete={isPassword ? 'off' : props.autoComplete}
           onFocus={(e) => { setIsFocused(true);  onFocus?.(e)  }}
           onBlur={(e)  => { setIsFocused(false); onBlur?.(e)   }}
-          {...props}
         />
 
         {isPassword && (
