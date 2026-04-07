@@ -2,8 +2,6 @@
 
 A skill-barter mobile app — teach what you know, learn what you don't. Users list skills they can teach and skills they want to learn, then get matched with people who complement them.
 
-![icon](frontend/assets/images/icon.png)
-
 ---
 
 ## Tech Stack
