@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { logger } = require('../utils/logger');
@@ -26,18 +27,36 @@ function initSocket(server) {
     }
   });
 
+  // Helper: verify user is participant in conversation
+  async function verifyParticipant(userId, conversationId) {
+    if (!conversationId || !mongoose.Types.ObjectId.isValid(conversationId)) return false;
+    const conv = await Conversation.findOne({
+      _id: conversationId,
+      participants: userId,
+    }).select('_id').lean();
+    return !!conv;
+  }
+
+  // Track verified conversations per socket to avoid repeated DB lookups
+  const verifiedRooms = new Map(); // socketId -> Set<conversationId>
+
   io.on('connection', (socket) => {
     const userId = socket.userId;
     socket.join(`user:${userId}`);
+    verifiedRooms.set(socket.id, new Set());
     logger.info(`Socket connected: ${userId}`);
 
-    // Join conversation rooms
-    socket.on('join_conversation', (conversationId) => {
+    // Join conversation rooms — with membership verification
+    socket.on('join_conversation', async (conversationId) => {
+      const isParticipant = await verifyParticipant(userId, conversationId);
+      if (!isParticipant) return; // silently reject unauthorized joins
       socket.join(`conv:${conversationId}`);
+      verifiedRooms.get(socket.id)?.add(conversationId);
     });
 
     socket.on('leave_conversation', (conversationId) => {
       socket.leave(`conv:${conversationId}`);
+      verifiedRooms.get(socket.id)?.delete(conversationId);
     });
 
     // Send message
@@ -45,12 +64,19 @@ function initSocket(server) {
       try {
         const { conversationId, text } = data;
         if (!text?.trim() || !conversationId) return;
+        if (text.trim().length > 2000) {
+          if (callback) callback({ success: false, error: 'Message too long' });
+          return;
+        }
 
         const conversation = await Conversation.findOne({
           _id: conversationId,
           participants: userId,
         });
-        if (!conversation) return;
+        if (!conversation) {
+          if (callback) callback({ success: false, error: 'Conversation not found' });
+          return;
+        }
 
         const message = await Message.create({
           conversationId,
@@ -75,13 +101,11 @@ function initSocket(server) {
           [`unreadCount.${otherId}`]: currentUnread + 1,
         });
 
-        // Emit to conversation room
         io.to(`conv:${conversationId}`).emit('new_message', {
           ...message.toObject(),
           conversationId,
         });
 
-        // Notify the other user (for badge updates etc.)
         io.to(`user:${otherId}`).emit('message_notification', {
           conversationId,
           senderId: userId,
@@ -95,9 +119,11 @@ function initSocket(server) {
       }
     });
 
-    // Mark messages as read
+    // Mark messages as read — verify membership
     socket.on('mark_read', async ({ conversationId }) => {
       try {
+        if (!verifiedRooms.get(socket.id)?.has(conversationId)) return;
+
         await Message.updateMany(
           {
             conversationId,
@@ -111,7 +137,6 @@ function initSocket(server) {
           [`unreadCount.${userId}`]: 0,
         });
 
-        // Notify the other person that messages were read
         io.to(`conv:${conversationId}`).emit('messages_read', {
           conversationId,
           readBy: userId,
@@ -121,8 +146,9 @@ function initSocket(server) {
       }
     });
 
-    // Typing indicator
+    // Typing indicator — only emit if verified in room
     socket.on('typing', ({ conversationId }) => {
+      if (!verifiedRooms.get(socket.id)?.has(conversationId)) return;
       socket.to(`conv:${conversationId}`).emit('user_typing', {
         conversationId,
         userId,
@@ -130,6 +156,7 @@ function initSocket(server) {
     });
 
     socket.on('stop_typing', ({ conversationId }) => {
+      if (!verifiedRooms.get(socket.id)?.has(conversationId)) return;
       socket.to(`conv:${conversationId}`).emit('user_stop_typing', {
         conversationId,
         userId,
@@ -137,6 +164,7 @@ function initSocket(server) {
     });
 
     socket.on('disconnect', () => {
+      verifiedRooms.delete(socket.id);
       logger.info(`Socket disconnected: ${userId}`);
     });
   });

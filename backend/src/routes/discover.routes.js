@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Match = require('../models/Match');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { isValidObjectId, escapeRegex } = require('../utils/validate');
 
 const router = express.Router();
 
@@ -27,15 +28,22 @@ router.get('/', protect, async (req, res) => {
     m.users.filter(u => u.toString() !== me._id.toString())
   );
 
+  // Limit skippedUsers to last 500 to prevent unbounded growth in queries
+  const recentSkipped = (me.skippedUsers || []).slice(-500);
+
   const excludeIds = [
     me._id,
-    ...(me.skippedUsers || []),
+    ...recentSkipped,
     ...matchedUserIds,
   ];
 
-  // Build query: find users whose teachSkills overlap with my learnSkills (or vice versa)
-  const myLearnSkillNames = (me.learnSkills || []).map(s => s.skillName?.toLowerCase()).filter(Boolean);
-  const myTeachSkillNames = (me.teachSkills || []).map(s => s.skillName?.toLowerCase()).filter(Boolean);
+  // Build skill name lists, filter out null/undefined/empty and escape regex
+  const myLearnSkillNames = (me.learnSkills || [])
+    .map(s => s.skillName?.toLowerCase())
+    .filter(s => s && s.length > 0);
+  const myTeachSkillNames = (me.teachSkills || [])
+    .map(s => s.skillName?.toLowerCase())
+    .filter(s => s && s.length > 0);
 
   const query = {
     _id: { $nin: excludeIds },
@@ -43,13 +51,21 @@ router.get('/', protect, async (req, res) => {
     onboardingCompleted: true,
   };
 
-  // At least one skill overlap in either direction
+  // Use $in with case-insensitive regex (escaped to prevent injection)
   const orConditions = [];
   if (myLearnSkillNames.length > 0) {
-    orConditions.push({ 'teachSkills.skillName': { $regex: new RegExp(myLearnSkillNames.map(s => `^${s}$`).join('|'), 'i') } });
+    orConditions.push({
+      'teachSkills.skillName': {
+        $in: myLearnSkillNames.map(s => new RegExp(`^${escapeRegex(s)}$`, 'i')),
+      },
+    });
   }
   if (myTeachSkillNames.length > 0) {
-    orConditions.push({ 'learnSkills.skillName': { $regex: new RegExp(myTeachSkillNames.map(s => `^${s}$`).join('|'), 'i') } });
+    orConditions.push({
+      'learnSkills.skillName': {
+        $in: myTeachSkillNames.map(s => new RegExp(`^${escapeRegex(s)}$`, 'i')),
+      },
+    });
   }
 
   if (orConditions.length > 0) {
@@ -71,10 +87,10 @@ router.get('/', protect, async (req, res) => {
     let score = 0;
     const sharedSkills = [];
 
-    // They teach what I want to learn
     for (const myLearn of me.learnSkills || []) {
+      if (!myLearn.skillName) continue;
       const theirTeach = (user.teachSkills || []).find(
-        t => t.skillName?.toLowerCase() === myLearn.skillName?.toLowerCase()
+        t => t.skillName?.toLowerCase() === myLearn.skillName.toLowerCase()
       );
       if (theirTeach) {
         score += 20 + (theirTeach.level || 0) * 5;
@@ -87,10 +103,10 @@ router.get('/', protect, async (req, res) => {
       }
     }
 
-    // I teach what they want to learn
     for (const theirLearn of user.learnSkills || []) {
+      if (!theirLearn.skillName) continue;
       const myTeach = (me.teachSkills || []).find(
-        t => t.skillName?.toLowerCase() === theirLearn.skillName?.toLowerCase()
+        t => t.skillName?.toLowerCase() === theirLearn.skillName.toLowerCase()
       );
       if (myTeach) {
         score += 15 + (myTeach.level || 0) * 3;
@@ -103,7 +119,6 @@ router.get('/', protect, async (req, res) => {
       }
     }
 
-    // Bonus for mutual exchange
     const theyTeachMe = sharedSkills.some(s => s.direction === 'they_teach');
     const iTeachThem = sharedSkills.some(s => s.direction === 'i_teach');
     if (theyTeachMe && iTeachThem) score += 30;
@@ -111,7 +126,6 @@ router.get('/', protect, async (req, res) => {
     return { ...user, matchScore: score, sharedSkills };
   });
 
-  // Sort by match score descending
   usersWithScore.sort((a, b) => b.matchScore - a.matchScore);
 
   res.json(successResponse({
@@ -125,6 +139,9 @@ router.get('/', protect, async (req, res) => {
 // POST /api/discover/skip/:userId — skip a user
 router.post('/skip/:userId', protect, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidObjectId(userId)) {
+    return res.status(400).json(errorResponse('Invalid user ID'));
+  }
   await User.findByIdAndUpdate(req.user._id, {
     $addToSet: { skippedUsers: userId },
   });
