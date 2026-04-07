@@ -8,8 +8,12 @@ const mongoose  = require('mongoose');
 const { errorHandler } = require('./middleware/error.middleware');
 const { successResponse } = require('./utils/apiResponse');
 
-const authRoutes = require('./routes/auth.routes');
-const userRoutes = require('./routes/user.routes');
+const authRoutes     = require('./routes/auth.routes');
+const userRoutes     = require('./routes/user.routes');
+const discoverRoutes = require('./routes/discover.routes');
+const matchRoutes    = require('./routes/match.routes');
+const messageRoutes  = require('./routes/message.routes');
+const sessionRoutes  = require('./routes/session.routes');
 
 const app = express();
 
@@ -85,8 +89,12 @@ app.get('/api/health', (req, res) => {
 });
 
 // ── Routes ─────────────────────────────────────────────────────────────────
-app.use('/api/auth',  authLimiter, authRoutes);
-app.use('/api/users', apiLimiter,  userRoutes);
+app.use('/api/auth',     authLimiter, authRoutes);
+app.use('/api/users',    apiLimiter,  userRoutes);
+app.use('/api/discover', apiLimiter,  discoverRoutes);
+app.use('/api/matches',  apiLimiter,  matchRoutes);
+app.use('/api/messages', apiLimiter,  messageRoutes);
+app.use('/api/sessions', apiLimiter,  sessionRoutes);
 
 // ── 404 ────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
