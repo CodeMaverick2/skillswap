@@ -12,6 +12,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics'
 import { useTheme } from '@/theme/ThemeContext'
 import { spacing, radius } from '@/theme/spacing'
+import { useNotificationStore } from '@/store/notification.store'
 
 interface TabConfig {
   name: string
@@ -140,6 +141,7 @@ function TabButton({
 function CustomTabBar({ state, navigation }: any) {
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
+  const { unreadCount } = useNotificationStore()
 
   return (
     <View
@@ -163,13 +165,14 @@ function CustomTabBar({ state, navigation }: any) {
           const tab = TABS.find(t => t.name === route.name)
           if (!tab) return null
           const isFocused = state.index === index
+          const badge = route.name === 'messages' ? unreadCount : 0
 
           return (
             <TabButton
               key={route.key}
               tab={tab}
               isFocused={isFocused}
-              badge={0}
+              badge={badge}
               onPress={() => {
                 const event = navigation.emit({
                   type: 'tabPress',

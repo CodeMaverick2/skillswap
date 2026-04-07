@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -9,6 +9,8 @@ import { Avatar } from '@/components/ui/Avatar'
 import { getAvatarColor } from '@/utils/avatarColor'
 import { useAuthStore } from '@/store/auth.store'
 import api from '@/services/api'
+import { useToast } from '@/hooks/useToast'
+import { getApiError } from '@/utils/apiError'
 import { format, isToday, isTomorrow, isPast } from 'date-fns'
 
 interface SessionItem {
@@ -160,14 +162,15 @@ export default function SessionsScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming')
+  const toast = useToast()
 
   const fetchSessions = useCallback(async () => {
     try {
       const res = await api.get('/sessions')
       setUpcoming(res.data.data?.upcoming || [])
       setPast(res.data.data?.past || [])
-    } catch {
-      // silent
+    } catch (err) {
+      if (!refreshing) toast.error(getApiError(err))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -180,16 +183,23 @@ export default function SessionsScreen() {
     setActionLoadingId(sessionId)
     try {
       await api.put(`/sessions/${sessionId}/confirm`)
+      toast.success('Session confirmed!')
       fetchSessions()
-    } catch {} finally { setActionLoadingId(null) }
+    } catch (err) { toast.error(getApiError(err)) } finally { setActionLoadingId(null) }
   }
 
   const handleCancel = async (sessionId: string) => {
-    setActionLoadingId(sessionId)
-    try {
-      await api.put(`/sessions/${sessionId}/cancel`)
-      fetchSessions()
-    } catch {} finally { setActionLoadingId(null) }
+    Alert.alert('Cancel Session', 'Are you sure you want to cancel this session?', [
+      { text: 'Keep', style: 'cancel' },
+      { text: 'Cancel Session', style: 'destructive', onPress: async () => {
+        setActionLoadingId(sessionId)
+        try {
+          await api.put(`/sessions/${sessionId}/cancel`)
+          toast.info('Session cancelled')
+          fetchSessions()
+        } catch (err) { toast.error(getApiError(err)) } finally { setActionLoadingId(null) }
+      }},
+    ])
   }
 
   const displaySessions = activeTab === 'upcoming' ? upcoming : past
