@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Keyboard,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -171,8 +171,17 @@ export default function ConversationScreen() {
     return () => {
       socket.emit('leave_conversation', id)
       socket.disconnect()
+      socketRef.current = null
     }
   }, [id, accessToken])
+
+  // Disconnect socket if user logs out (accessToken becomes null)
+  useEffect(() => {
+    if (!accessToken && socketRef.current) {
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+  }, [accessToken])
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim()
@@ -180,6 +189,7 @@ export default function ConversationScreen() {
 
     setSending(true)
     setText('')
+    Keyboard.dismiss()
 
     // Optimistic add
     const tempMsg: ChatMessage = {
@@ -381,9 +391,17 @@ export default function ConversationScreen() {
           renderItem={({ item }) => (
             <MessageBubble message={item} isMe={item.senderId === user?._id} />
           )}
-          contentContainerStyle={{ paddingVertical: spacing.md }}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          contentContainerStyle={messages.length === 0 ? { flex: 1, justifyContent: 'center', alignItems: 'center' } : { paddingVertical: spacing.md }}
+          onContentSizeChange={() => { if (messages.length > 0) flatListRef.current?.scrollToEnd({ animated: false }) }}
+          onLayout={() => { if (messages.length > 0) flatListRef.current?.scrollToEnd({ animated: false }) }}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', padding: spacing.xl }}>
+              <Text style={{ fontSize: 36, marginBottom: spacing.sm }}>👋</Text>
+              <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.textMuted, textAlign: 'center' }}>
+                Say hello to start the conversation!
+              </Text>
+            </View>
+          }
         />
 
         {/* Input */}

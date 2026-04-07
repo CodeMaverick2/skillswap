@@ -1,10 +1,10 @@
 const express = require('express');
-const Joi = require('joi');
 const Match = require('../models/Match');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { isValidObjectId } = require('../utils/validate');
 
 const router = express.Router();
 
@@ -13,11 +13,15 @@ router.post('/connect/:userId', protect, async (req, res) => {
   const me = req.user._id;
   const other = req.params.userId;
 
+  if (!isValidObjectId(other)) {
+    return res.status(400).json(errorResponse('Invalid user ID'));
+  }
+
   if (me.toString() === other) {
     return res.status(400).json(errorResponse('Cannot connect with yourself'));
   }
 
-  // Check if match already exists between these two
+  // Atomic upsert-style check to prevent race conditions on duplicate requests
   const existing = await Match.findOne({
     users: { $all: [me, other] },
     status: { $in: ['pending', 'accepted'] },
@@ -38,38 +42,46 @@ router.post('/connect/:userId', protect, async (req, res) => {
 
 // PUT /api/matches/:matchId/accept — accept a connection
 router.put('/:matchId/accept', protect, async (req, res) => {
-  const match = await Match.findById(req.params.matchId);
-  if (!match) return res.status(404).json(errorResponse('Match not found'));
-
-  // Only the non-initiator can accept
-  const isRecipient = match.users.some(u => u.toString() === req.user._id.toString())
-    && match.initiator.toString() !== req.user._id.toString();
-
-  if (!isRecipient) {
-    return res.status(403).json(errorResponse('Only the recipient can accept'));
+  if (!isValidObjectId(req.params.matchId)) {
+    return res.status(400).json(errorResponse('Invalid match ID'));
   }
 
-  if (match.status !== 'pending') {
-    return res.status(400).json(errorResponse(`Match is already ${match.status}`));
+  // Atomic update to prevent race conditions: only update if still pending
+  const match = await Match.findOneAndUpdate(
+    {
+      _id: req.params.matchId,
+      status: 'pending',
+      users: req.user._id,
+      initiator: { $ne: req.user._id }, // only recipient can accept
+    },
+    { $set: { status: 'accepted' } },
+    { new: true }
+  );
+
+  if (!match) {
+    return res.status(404).json(errorResponse('Match not found, already handled, or not authorized'));
   }
 
-  match.status = 'accepted';
-  await match.save();
-
-  // Create a conversation for the matched pair
-  let conversation = await Conversation.findOne({ matchId: match._id });
-  if (!conversation) {
-    conversation = await Conversation.create({
-      participants: match.users,
-      matchId: match._id,
-      lastMessage: {
-        text: 'You matched! Say hello 👋',
-        senderId: match.initiator,
-        createdAt: new Date(),
+  // Create conversation atomically (findOneAndUpdate with upsert to prevent duplicates)
+  let conversation = await Conversation.findOneAndUpdate(
+    { matchId: match._id },
+    {
+      $setOnInsert: {
+        participants: match.users,
+        matchId: match._id,
+        lastMessage: {
+          text: 'You matched! Say hello 👋',
+          senderId: match.initiator,
+          createdAt: new Date(),
+        },
       },
-    });
+    },
+    { new: true, upsert: true }
+  );
 
-    // System message
+  // Create system message only if conversation was just created (no messages yet)
+  const msgCount = await Message.countDocuments({ conversationId: conversation._id });
+  if (msgCount === 0) {
     await Message.create({
       conversationId: conversation._id,
       senderId: match.initiator,
@@ -84,18 +96,24 @@ router.put('/:matchId/accept', protect, async (req, res) => {
 
 // PUT /api/matches/:matchId/reject — reject a connection
 router.put('/:matchId/reject', protect, async (req, res) => {
-  const match = await Match.findById(req.params.matchId);
-  if (!match) return res.status(404).json(errorResponse('Match not found'));
-
-  const isParticipant = match.users.some(u => u.toString() === req.user._id.toString());
-  if (!isParticipant) return res.status(403).json(errorResponse('Not a participant'));
-
-  if (match.status !== 'pending') {
-    return res.status(400).json(errorResponse(`Match is already ${match.status}`));
+  if (!isValidObjectId(req.params.matchId)) {
+    return res.status(400).json(errorResponse('Invalid match ID'));
   }
 
-  match.status = 'rejected';
-  await match.save();
+  // Atomic update to prevent race conditions
+  const match = await Match.findOneAndUpdate(
+    {
+      _id: req.params.matchId,
+      status: 'pending',
+      users: req.user._id,
+    },
+    { $set: { status: 'rejected' } },
+    { new: true }
+  );
+
+  if (!match) {
+    return res.status(404).json(errorResponse('Match not found or already handled'));
+  }
 
   res.json(successResponse(match, 'Connection rejected'));
 });
@@ -109,6 +127,7 @@ router.get('/', protect, async (req, res) => {
   })
     .populate('users', 'username profile teachSkills learnSkills reputation')
     .sort({ updatedAt: -1 })
+    .limit(50)
     .lean();
 
   res.json(successResponse(matches, 'Matches fetched'));
@@ -123,6 +142,7 @@ router.get('/pending', protect, async (req, res) => {
   })
     .populate('users', 'username profile teachSkills learnSkills reputation')
     .sort({ createdAt: -1 })
+    .limit(50)
     .lean();
 
   res.json(successResponse(pending, 'Pending requests'));

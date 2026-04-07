@@ -1,10 +1,9 @@
 const express = require('express');
-const Joi = require('joi');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const Match = require('../models/Match');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { isValidObjectId } = require('../utils/validate');
 
 const router = express.Router();
 
@@ -29,6 +28,9 @@ router.get('/conversations', protect, async (req, res) => {
 // GET /api/messages/:conversationId — get messages for a conversation
 router.get('/:conversationId', protect, async (req, res) => {
   const { conversationId } = req.params;
+  if (!isValidObjectId(conversationId)) {
+    return res.status(400).json(errorResponse('Invalid conversation ID'));
+  }
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 30));
   const skip = (page - 1) * limit;
@@ -78,6 +80,9 @@ router.get('/:conversationId', protect, async (req, res) => {
 // POST /api/messages/:conversationId — send a message (REST fallback)
 router.post('/:conversationId', protect, async (req, res) => {
   const { conversationId } = req.params;
+  if (!isValidObjectId(conversationId)) {
+    return res.status(400).json(errorResponse('Invalid conversation ID'));
+  }
   const { text } = req.body;
 
   if (!text || !text.trim()) {
