@@ -668,7 +668,7 @@ export default function Step3LearnScreen() {
         <CelebrationOverlay
           onDone={() => {
             setShowCelebration(false)
-            // AuthGate will detect onboardingCompleted: true and redirect
+            router.replace('/(tabs)/discover')
           }}
         />
       )}
