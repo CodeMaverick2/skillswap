@@ -11,6 +11,7 @@ import Animated, {
   withDelay,
   withSpring,
   Easing,
+  type SharedValue,
 } from 'react-native-reanimated'
 import { useTheme } from '@/theme/ThemeContext'
 import { spacing, radius } from '@/theme/spacing'
@@ -80,7 +81,7 @@ function StatPill({ icon, label, color }: { icon: string; label: string; color: 
   )
 }
 
-function ComingSoonCard({ opacity, translateY }: { opacity: Animated.SharedValue<number>; translateY: Animated.SharedValue<number> }) {
+function ComingSoonCard({ opacity, translateY }: { opacity: SharedValue<number>; translateY: SharedValue<number> }) {
   const { colors } = useTheme()
   const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: translateY.value }] }))
 
