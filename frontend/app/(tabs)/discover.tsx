@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import Animated, {
@@ -17,6 +17,8 @@ import { Avatar } from '@/components/ui/Avatar'
 import { getAvatarColor } from '@/utils/avatarColor'
 import { getLevelByValue } from '@/constants/skillLevels'
 import api from '@/services/api'
+import { useToast } from '@/hooks/useToast'
+import { getApiError } from '@/utils/apiError'
 
 interface DiscoverUser {
   _id: string
@@ -243,6 +245,7 @@ export default function DiscoverScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [connectingId, setConnectingId] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const toast = useToast()
 
   const fetchDiscover = useCallback(async () => {
     try {
@@ -252,8 +255,8 @@ export default function DiscoverScreen() {
       ])
       setUsers(discoverRes.data.data?.users || [])
       setPending(pendingRes.data.data || [])
-    } catch {
-      // Silent fail — will show empty state
+    } catch (err) {
+      if (!refreshing) toast.error(getApiError(err))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -267,8 +270,9 @@ export default function DiscoverScreen() {
     try {
       await api.post(`/matches/connect/${userId}`)
       setUsers(prev => prev.filter(u => u._id !== userId))
-    } catch {
-      // ignore — already connected or error
+      toast.success('Connection request sent!')
+    } catch (err) {
+      toast.error(getApiError(err))
     } finally {
       setConnectingId(null)
     }
@@ -279,7 +283,7 @@ export default function DiscoverScreen() {
     try {
       await api.post(`/discover/skip/${userId}`)
     } catch {
-      // ignore
+      // non-critical
     }
   }
 
@@ -288,15 +292,21 @@ export default function DiscoverScreen() {
     try {
       await api.put(`/matches/${matchId}/accept`)
       setPending(prev => prev.filter(m => m._id !== matchId))
-    } catch {} finally { setActionLoadingId(null) }
+      toast.success('Connection accepted! You can now chat.')
+    } catch (err) { toast.error(getApiError(err)) } finally { setActionLoadingId(null) }
   }
 
   const handleReject = async (matchId: string) => {
-    setActionLoadingId(matchId)
-    try {
-      await api.put(`/matches/${matchId}/reject`)
-      setPending(prev => prev.filter(m => m._id !== matchId))
-    } catch {} finally { setActionLoadingId(null) }
+    Alert.alert('Reject Request', 'Are you sure you want to reject this connection?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: async () => {
+        setActionLoadingId(matchId)
+        try {
+          await api.put(`/matches/${matchId}/reject`)
+          setPending(prev => prev.filter(m => m._id !== matchId))
+        } catch (err) { toast.error(getApiError(err)) } finally { setActionLoadingId(null) }
+      }},
+    ])
   }
 
   const onRefresh = () => {

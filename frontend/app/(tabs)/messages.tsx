@@ -9,6 +9,9 @@ import { Avatar } from '@/components/ui/Avatar'
 import { getAvatarColor } from '@/utils/avatarColor'
 import { useAuthStore } from '@/store/auth.store'
 import api from '@/services/api'
+import { useToast } from '@/hooks/useToast'
+import { getApiError } from '@/utils/apiError'
+import { useNotificationStore } from '@/store/notification.store'
 import { formatDistanceToNow } from 'date-fns'
 
 interface ConversationItem {
@@ -113,13 +116,19 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const toast = useToast()
+  const { setUnreadCount } = useNotificationStore()
 
   const fetchConversations = useCallback(async () => {
     try {
       const res = await api.get('/messages/conversations')
-      setConversations(res.data.data || [])
-    } catch {
-      // silent
+      const convs = res.data.data || []
+      setConversations(convs)
+      // Update global unread badge
+      const totalUnread = convs.reduce((sum: number, c: any) => sum + (c.unread || 0), 0)
+      setUnreadCount(totalUnread)
+    } catch (err) {
+      if (!refreshing) toast.error(getApiError(err))
     } finally {
       setLoading(false)
       setRefreshing(false)

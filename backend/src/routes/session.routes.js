@@ -69,6 +69,19 @@ router.get('/', protect, async (req, res) => {
   res.json(successResponse({ upcoming, past }, 'Sessions fetched'));
 });
 
+// GET /api/sessions/:id — get single session
+router.get('/:id', protect, async (req, res) => {
+  const session = await Session.findOne({
+    _id: req.params.id,
+    participants: req.user._id,
+  })
+    .populate('participants', 'username profile')
+    .lean();
+
+  if (!session) return res.status(404).json(errorResponse('Session not found'));
+  res.json(successResponse(session, 'Session fetched'));
+});
+
 // PUT /api/sessions/:id/confirm — confirm a session
 router.put('/:id/confirm', protect, async (req, res) => {
   const session = await Session.findOne({

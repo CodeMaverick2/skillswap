@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useTheme } from '@/theme/ThemeContext'
 import { Avatar } from '@/components/ui/Avatar'
 import { spacing, radius } from '@/theme/spacing'
+import { useRouter } from 'expo-router'
 import { useAuthStore } from '@/store/auth.store'
 import { useAuth } from '@/hooks/useAuth'
 import { getLevelByValue } from '@/constants/skillLevels'
@@ -120,6 +121,7 @@ function StatItem({ value, label, isMiddle = false }: StatItemProps) {
 
 export default function ProfileScreen() {
   const { colors, isDark, toggleTheme } = useTheme()
+  const router = useRouter()
   const { user } = useAuthStore()
   const { logout } = useAuth()
   const [loggingOut, setLoggingOut] = useState(false)
@@ -209,25 +211,20 @@ export default function ProfileScreen() {
             Profile
           </Text>
           <TouchableOpacity
-            onPress={() => {
-              // Settings — Phase 2
-            }}
+            onPress={() => router.push('/edit-profile')}
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.xs + 2,
+              borderRadius: radius.full,
               backgroundColor: colors.surfaceAlt,
-              alignItems: 'center',
-              justifyContent: 'center',
               borderWidth: 1,
               borderColor: colors.border,
+              flexDirection: 'row',
+              alignItems: 'center',
             }}
           >
-            <Ionicons
-              name="settings-outline"
-              size={20}
-              color={colors.textSecondary}
-            />
+            <Ionicons name="create-outline" size={16} color={colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.textSecondary }}>Edit</Text>
           </TouchableOpacity>
         </View>
 

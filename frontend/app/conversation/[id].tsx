@@ -12,6 +12,8 @@ import { Avatar } from '@/components/ui/Avatar'
 import { getAvatarColor } from '@/utils/avatarColor'
 import { useAuthStore } from '@/store/auth.store'
 import api from '@/services/api'
+import { useToast } from '@/hooks/useToast'
+import { getApiError } from '@/utils/apiError'
 import { io, Socket } from 'socket.io-client'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -95,6 +97,13 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false)
   const [otherUser, setOtherUser] = useState<any>(null)
   const [isTyping, setIsTyping] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
+  const [sessionTopic, setSessionTopic] = useState('')
+  const [sessionDate, setSessionDate] = useState('')
+  const [sessionDuration, setSessionDuration] = useState('60')
+  const [scheduling, setScheduling] = useState(false)
+  const [matchId, setMatchId] = useState<string | null>(null)
+  const toast = useToast()
 
   const socketRef = useRef<Socket | null>(null)
   const flatListRef = useRef<FlatList>(null)
@@ -114,6 +123,7 @@ export default function ConversationScreen() {
         if (conv) {
           const other = conv.participants?.find((p: any) => p._id !== user?._id)
           setOtherUser(other)
+          if (conv.matchId) setMatchId(typeof conv.matchId === 'string' ? conv.matchId : conv.matchId._id)
         }
       } catch {
         // silent
@@ -131,6 +141,9 @@ export default function ConversationScreen() {
     const socket = io(SOCKET_URL, {
       auth: { token: accessToken },
       transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
     })
 
     socket.on('connect', () => {
@@ -194,6 +207,7 @@ export default function ConversationScreen() {
         // Remove temp message on failure
         setMessages(prev => prev.filter(m => m._id !== tempMsg._id))
         setText(trimmed)
+        toast.error('Failed to send message')
       }
     }
 
@@ -211,6 +225,37 @@ export default function ConversationScreen() {
       typingTimeoutRef.current = setTimeout(() => {
         socketRef.current?.emit('stop_typing', { conversationId: id })
       }, 2000)
+    }
+  }
+
+  const handleScheduleSession = async () => {
+    if (!sessionTopic.trim()) { toast.error('Topic is required'); return }
+    if (!sessionDate.trim()) { toast.error('Date is required (YYYY-MM-DD HH:mm)'); return }
+    if (!matchId) { toast.error('Match not found'); return }
+
+    const parsedDate = new Date(sessionDate.trim())
+    if (isNaN(parsedDate.getTime()) || parsedDate <= new Date()) {
+      toast.error('Enter a valid future date (YYYY-MM-DD HH:mm)')
+      return
+    }
+
+    setScheduling(true)
+    try {
+      await api.post('/sessions', {
+        matchId,
+        scheduledAt: parsedDate.toISOString(),
+        duration: parseInt(sessionDuration) || 60,
+        topic: sessionTopic.trim(),
+      })
+      toast.success('Session scheduled!')
+      setShowSchedule(false)
+      setSessionTopic('')
+      setSessionDate('')
+      setSessionDuration('60')
+    } catch (err) {
+      toast.error(getApiError(err))
+    } finally {
+      setScheduling(false)
     }
   }
 
@@ -249,7 +294,83 @@ export default function ConversationScreen() {
             <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.primary }}>typing...</Text>
           )}
         </View>
+        <TouchableOpacity
+          onPress={() => setShowSchedule(!showSchedule)}
+          style={{ padding: 6, backgroundColor: showSchedule ? `${colors.primary}15` : 'transparent', borderRadius: radius.sm }}
+        >
+          <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+        </TouchableOpacity>
       </View>
+
+      {/* Schedule Session Form */}
+      {showSchedule && (
+        <View style={{
+          borderBottomWidth: 1, borderBottomColor: colors.border,
+          backgroundColor: colors.surface, padding: spacing.base,
+        }}>
+          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary, marginBottom: spacing.sm }}>
+            📅 Schedule a Session
+          </Text>
+          <TextInput
+            value={sessionTopic}
+            onChangeText={setSessionTopic}
+            placeholder="Topic (e.g. Python basics)"
+            placeholderTextColor={colors.textMuted}
+            style={{
+              fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textPrimary,
+              backgroundColor: colors.surfaceAlt, borderRadius: radius.sm,
+              paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+              borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
+            }}
+            selectionColor={colors.primary}
+          />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
+            <TextInput
+              value={sessionDate}
+              onChangeText={setSessionDate}
+              placeholder="2025-01-15 14:00"
+              placeholderTextColor={colors.textMuted}
+              style={{
+                flex: 2, fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textPrimary,
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.sm,
+                paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+                borderWidth: 1, borderColor: colors.border,
+              }}
+              selectionColor={colors.primary}
+            />
+            <TextInput
+              value={sessionDuration}
+              onChangeText={setSessionDuration}
+              placeholder="60"
+              keyboardType="number-pad"
+              placeholderTextColor={colors.textMuted}
+              style={{
+                flex: 1, fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textPrimary,
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.sm,
+                paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+                borderWidth: 1, borderColor: colors.border, textAlign: 'center',
+              }}
+              selectionColor={colors.primary}
+            />
+          </View>
+          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted, marginBottom: spacing.sm }}>
+            Date format: YYYY-MM-DD HH:mm · Duration in minutes
+          </Text>
+          <TouchableOpacity
+            onPress={handleScheduleSession}
+            disabled={scheduling}
+            style={{
+              backgroundColor: colors.primary, borderRadius: radius.sm,
+              paddingVertical: spacing.sm, alignItems: 'center',
+              opacity: scheduling ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#fff' }}>
+              {scheduling ? 'Scheduling...' : 'Schedule Session'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         {/* Messages */}
