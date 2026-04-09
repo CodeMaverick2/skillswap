@@ -4,6 +4,7 @@ const Match = require('../models/Match');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId, escapeRegex } = require('../utils/validate');
+const { scoreUserForDiscover } = require('../services/recommendation.service');
 
 const router = express.Router();
 
@@ -82,49 +83,7 @@ router.get('/', protect, async (req, res) => {
     User.countDocuments(query),
   ]);
 
-  // Calculate match score for each user
-  const usersWithScore = users.map(user => {
-    let score = 0;
-    const sharedSkills = [];
-
-    for (const myLearn of me.learnSkills || []) {
-      if (!myLearn.skillName) continue;
-      const theirTeach = (user.teachSkills || []).find(
-        t => t.skillName?.toLowerCase() === myLearn.skillName.toLowerCase()
-      );
-      if (theirTeach) {
-        score += 20 + (theirTeach.level || 0) * 5;
-        sharedSkills.push({
-          skillName: theirTeach.skillName,
-          skillIcon: theirTeach.skillIcon,
-          direction: 'they_teach',
-          theirLevel: theirTeach.level,
-        });
-      }
-    }
-
-    for (const theirLearn of user.learnSkills || []) {
-      if (!theirLearn.skillName) continue;
-      const myTeach = (me.teachSkills || []).find(
-        t => t.skillName?.toLowerCase() === theirLearn.skillName.toLowerCase()
-      );
-      if (myTeach) {
-        score += 15 + (myTeach.level || 0) * 3;
-        sharedSkills.push({
-          skillName: myTeach.skillName,
-          skillIcon: myTeach.skillIcon,
-          direction: 'i_teach',
-          myLevel: myTeach.level,
-        });
-      }
-    }
-
-    const theyTeachMe = sharedSkills.some(s => s.direction === 'they_teach');
-    const iTeachThem = sharedSkills.some(s => s.direction === 'i_teach');
-    if (theyTeachMe && iTeachThem) score += 30;
-
-    return { ...user, matchScore: score, sharedSkills };
-  });
+  const usersWithScore = users.map((user) => scoreUserForDiscover(me, user));
 
   usersWithScore.sort((a, b) => b.matchScore - a.matchScore);
 

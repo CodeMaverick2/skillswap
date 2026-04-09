@@ -2,6 +2,7 @@ const express = require('express');
 const Match = require('../models/Match');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const { logActivity } = require('../services/activity.service');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId } = require('../utils/validate');
@@ -35,6 +36,14 @@ router.post('/connect/:userId', protect, async (req, res) => {
     users: [me, other],
     initiator: me,
     status: 'pending',
+  });
+  await logActivity({
+    actor: me,
+    targetUser: other,
+    type: 'match_sent',
+    title: 'Sent a connection request',
+    description: 'Waiting for the other user to accept your match request.',
+    metadata: { matchId: match._id },
   });
 
   res.status(201).json(successResponse(match, 'Connection request sent'));
@@ -90,6 +99,15 @@ router.put('/:matchId/accept', protect, async (req, res) => {
       readBy: [],
     });
   }
+  const otherUserId = match.users.find((u) => u.toString() !== req.user._id.toString());
+  await logActivity({
+    actor: req.user._id,
+    targetUser: otherUserId,
+    type: 'match_accepted',
+    title: 'Accepted a connection request',
+    description: 'You are now matched and can start chatting.',
+    metadata: { matchId: match._id, conversationId: conversation._id },
+  });
 
   res.json(successResponse({ match, conversation }, 'Connection accepted'));
 });
