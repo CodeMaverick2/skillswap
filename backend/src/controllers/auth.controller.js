@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const Joi = require('joi');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
+const Referral = require('../models/Referral');
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -46,6 +47,7 @@ const registerSchema = Joi.object({
     'any.only':     'Passwords do not match',
     'any.required': 'Confirm password is required',
   }),
+  referralCode: Joi.string().trim().alphanum().min(4).max(24).optional(),
 });
 
 const loginSchema = Joi.object({
@@ -97,12 +99,28 @@ const register = async (req, res) => {
   const colorIndex   = usernameLower.charCodeAt(0) % AVATAR_COLORS.length;
   const avatarColor  = AVATAR_COLORS[colorIndex];
 
+  const ownReferralCode = `${usernameLower.slice(0, 6)}${Math.floor(1000 + Math.random() * 9000)}`;
+
   const user = await User.create({
     email: emailLower,
     username: usernameLower,
     passwordHash,
     profile: { avatarColor },
+    referralCode: ownReferralCode,
   });
+
+  if (value.referralCode) {
+    const referrer = await User.findOne({ referralCode: value.referralCode }).lean();
+    if (referrer && referrer._id.toString() !== user._id.toString()) {
+      await Referral.create({
+        referrer: referrer._id,
+        referee: user._id,
+        code: value.referralCode,
+        status: 'joined',
+      });
+      await User.findByIdAndUpdate(user._id, { referredBy: referrer._id });
+    }
+  }
 
   const accessToken  = generateAccessToken(user._id, user.username, user.email);
   const refreshToken = generateRefreshToken(user._id);
@@ -141,7 +159,27 @@ const login = async (req, res) => {
   }
 
   // Update last active
-  await User.findByIdAndUpdate(user._id, { 'profile.lastActiveAt': new Date() });
+  const now = new Date();
+  const prevStreakAt = user.progress?.lastStreakAt ? new Date(user.progress.lastStreakAt) : null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  let nextStreak = user.progress?.streak || 0;
+  if (!prevStreakAt) nextStreak = 1;
+  else {
+    const diffDays = Math.floor((new Date(now.toDateString()).getTime() - new Date(prevStreakAt.toDateString()).getTime()) / dayMs);
+    if (diffDays >= 1 && diffDays <= 2) nextStreak += 1;
+    else if (diffDays > 2) nextStreak = 1;
+  }
+  const bestStreak = Math.max(user.progress?.bestStreak || 0, nextStreak);
+  const badges = new Set(user.progress?.badges || []);
+  if (nextStreak >= 3) badges.add('3_day_streak');
+  if (nextStreak >= 7) badges.add('7_day_streak');
+  await User.findByIdAndUpdate(user._id, {
+    'profile.lastActiveAt': now,
+    'progress.streak': nextStreak,
+    'progress.bestStreak': bestStreak,
+    'progress.lastStreakAt': now,
+    'progress.badges': Array.from(badges),
+  });
 
   const accessToken  = generateAccessToken(user._id, user.username, user.email);
   const refreshToken = generateRefreshToken(user._id);
