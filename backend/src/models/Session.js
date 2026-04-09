@@ -12,6 +12,7 @@ const sessionSchema = new Schema(
     duration: { type: Number, default: 60, min: 15, max: 180 }, // minutes
     topic: { type: String, trim: true, maxlength: 200 },
     notes: { type: String, trim: true, maxlength: 500 },
+    meetingLink: { type: String, trim: true, maxlength: 500, default: 'https://meet.google.com/new' },
     status: {
       type: String,
       enum: ['pending', 'confirmed', 'active', 'completed', 'cancelled'],
@@ -23,6 +24,20 @@ const sessionSchema = new Schema(
       of: {
         score: { type: Number, min: 1, max: 5 },
         comment: { type: String, maxlength: 300 },
+      },
+      default: {},
+    },
+    participantNotes: {
+      type: Map,
+      of: String,
+      default: {},
+    },
+    feedback: {
+      type: Map,
+      of: {
+        score: { type: Number, min: 1, max: 5 },
+        comment: { type: String, maxlength: 300 },
+        nextSteps: { type: String, maxlength: 500 },
       },
       default: {},
     },
