@@ -14,6 +14,9 @@ const discoverRoutes = require('./routes/discover.routes');
 const matchRoutes    = require('./routes/match.routes');
 const messageRoutes  = require('./routes/message.routes');
 const sessionRoutes  = require('./routes/session.routes');
+const activityRoutes = require('./routes/activity.routes');
+const goalRoutes     = require('./routes/goal.routes');
+const referralRoutes = require('./routes/referral.routes');
 
 const app = express();
 
@@ -95,6 +98,9 @@ app.use('/api/discover', apiLimiter,  discoverRoutes);
 app.use('/api/matches',  apiLimiter,  matchRoutes);
 app.use('/api/messages', apiLimiter,  messageRoutes);
 app.use('/api/sessions', apiLimiter,  sessionRoutes);
+app.use('/api/activity', apiLimiter,  activityRoutes);
+app.use('/api/goals',    apiLimiter,  goalRoutes);
+app.use('/api/referrals', apiLimiter, referralRoutes);
 
 // ── 404 ────────────────────────────────────────────────────────────────────
 app.use((req, res) => {

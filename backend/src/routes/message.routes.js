@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId } = require('../utils/validate');
+const { logActivity } = require('../services/activity.service');
 
 const router = express.Router();
 
@@ -54,27 +55,27 @@ router.get('/:conversationId', protect, async (req, res) => {
     Message.countDocuments({ conversationId }),
   ]);
 
-  // Mark messages as read
-  await Message.updateMany(
-    {
-      conversationId,
-      senderId: { $ne: req.user._id },
-      readBy: { $ne: req.user._id },
-    },
-    { $addToSet: { readBy: req.user._id } }
-  );
-
-  // Reset unread count
-  await Conversation.findByIdAndUpdate(conversationId, {
-    [`unreadCount.${req.user._id}`]: 0,
-  });
-
   res.json(successResponse({
     messages: messages.reverse(),
     page,
     totalPages: Math.ceil(total / limit),
     total,
   }, 'Messages fetched'));
+
+  // Perform read-side effects after responding to keep message load snappy.
+  Promise.allSettled([
+    Message.updateMany(
+      {
+        conversationId,
+        senderId: { $ne: req.user._id },
+        readBy: { $ne: req.user._id },
+      },
+      { $addToSet: { readBy: req.user._id } }
+    ),
+    Conversation.findByIdAndUpdate(conversationId, {
+      [`unreadCount.${req.user._id}`]: 0,
+    }),
+  ]);
 });
 
 // POST /api/messages/:conversationId — send a message (REST fallback)
@@ -120,6 +121,15 @@ router.post('/:conversationId', protect, async (req, res) => {
       createdAt: message.createdAt,
     },
     [`unreadCount.${otherId}`]: currentUnread + 1,
+  });
+  await logActivity({
+    actor: req.user._id,
+    targetUser: otherId,
+    type: 'message_sent',
+    title: 'Sent a new message',
+    description: text.trim().slice(0, 80),
+    metadata: { conversationId, messageId: message._id },
+    visibility: 'private',
   });
 
   res.status(201).json(successResponse(message, 'Message sent'));

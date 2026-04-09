@@ -70,6 +70,17 @@ const userSchema = new Schema(
       inApp: { type: Boolean, default: true },
       push: { type: Boolean, default: true },
     },
+    progress: {
+      streak: { type: Number, default: 0 },
+      bestStreak: { type: Number, default: 0 },
+      lastStreakAt: { type: Date },
+      badges: {
+        type: [String],
+        default: [],
+      },
+    },
+    referralCode: { type: String, unique: true, sparse: true, index: true },
+    referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
     expoPushToken: { type: String },
     isActive: { type: Boolean, default: true },
   },
