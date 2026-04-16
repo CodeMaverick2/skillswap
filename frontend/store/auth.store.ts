@@ -39,6 +39,12 @@ export interface User {
   teachSkills: TeachSkill[]
   learnSkills: LearnSkill[]
   reputation: UserReputation
+  referralCode?: string
+  progress?: {
+    streak: number
+    bestStreak: number
+    badges: string[]
+  }
 }
 
 interface AuthState {
