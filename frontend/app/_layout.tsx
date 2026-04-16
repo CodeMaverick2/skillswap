@@ -17,6 +17,8 @@ import { ThemeProvider, useTheme } from '@/theme/ThemeContext'
 import { useAuthStore } from '@/store/auth.store'
 import { authService } from '@/services/auth.service'
 import { ToastContainer } from '@/components/ui/ToastContainer'
+import { NetworkBanner } from '@/components/ui/NetworkBanner'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -31,6 +33,7 @@ function AuthGate() {
   const router = useRouter()
   const segments = useSegments()
   const { isDark } = useTheme()
+  const { isConnected, isChecking } = useNetworkStatus()
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -68,6 +71,7 @@ function AuthGate() {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      <NetworkBanner visible={!isChecking && !isConnected} />
       <Slot />
       <ToastContainer />
     </>
