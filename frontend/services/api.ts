@@ -1,8 +1,19 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import * as SecureStore from 'expo-secure-store'
+import Constants from 'expo-constants'
 import { useAuthStore } from '@/store/auth.store'
 
-export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api'
+const getDevHostFromExpo = () => {
+  const hostUri = Constants.expoConfig?.hostUri
+  if (!hostUri) return null
+  const host = hostUri.split(':')[0]
+  return host || null
+}
+
+const FALLBACK_HOST = getDevHostFromExpo() || 'localhost'
+export const API_ORIGIN = process.env.EXPO_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || `http://${FALLBACK_HOST}:5000`
+export const BASE_URL = `${API_ORIGIN}/api`
+export const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || API_ORIGIN
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -10,9 +21,19 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+const shouldRetry = (error: AxiosError) => {
+  const method = error.config?.method?.toUpperCase()
+  if (!method || method !== 'GET') return false
+  if (error.response) return error.response.status >= 500
+  return error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message === 'Network Error'
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 // ── Request interceptor: attach access token ───────────────────────────────
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    ;(config as InternalAxiosRequestConfig & { metadata?: { start: number } }).metadata = { start: Date.now() }
     const token = useAuthStore.getState().accessToken
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
@@ -40,12 +61,35 @@ const clearSession = async () => {
 }
 
 api.interceptors.response.use(
-  (response) => response,
+  async (response) => {
+    const started = (response.config as InternalAxiosRequestConfig & { metadata?: { start: number } }).metadata?.start
+    if (__DEV__ && started) {
+      const elapsed = Date.now() - started
+      if (elapsed > 800) {
+        const method = response.config.method?.toUpperCase() || 'GET'
+        console.log(`[api:slow] ${method} ${response.config.url} took ${elapsed}ms`)
+      }
+    }
+    return response
+  },
   async (error: AxiosError) => {
-    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const cfg = error.config as (InternalAxiosRequestConfig & { _retryCount?: number }) | undefined
+    if (cfg && shouldRetry(error)) {
+      cfg._retryCount = cfg._retryCount || 0
+      if (cfg._retryCount < 2) {
+        cfg._retryCount += 1
+        const waitMs = cfg._retryCount === 1 ? 250 : 600
+        await sleep(waitMs)
+        return api(cfg)
+      }
+    }
 
-    // Only intercept 401s on non-retry requests that have a config (not network errors)
-    if (error.response?.status !== 401 || original._retry || !original) {
+    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const url = original?.url || ''
+    const isAuthRoute = ['/auth/login', '/auth/register', '/auth/refresh'].some((p) => url.includes(p))
+
+    // Only intercept 401s on non-retry requests with config, excluding auth endpoints.
+    if (error.response?.status !== 401 || original._retry || !original || isAuthRoute) {
       return Promise.reject(error)
     }
 
@@ -64,7 +108,10 @@ api.interceptors.response.use(
 
     try {
       const storedRefreshToken = await SecureStore.getItemAsync('refreshToken')
-      if (!storedRefreshToken) throw new Error('No refresh token stored')
+      if (!storedRefreshToken) {
+        // No refresh token yet (or already cleared); bubble original 401 cleanly.
+        return Promise.reject(error)
+      }
 
       // Use a bare axios call to avoid recursive interceptor loop
       const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken: storedRefreshToken })
