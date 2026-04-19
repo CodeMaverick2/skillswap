@@ -3,12 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshCon
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  withDelay,
-  type SharedValue,
+  FadeInDown,
+  FadeInUp,
 } from 'react-native-reanimated'
 import { useTheme } from '@/theme/ThemeContext'
 import { spacing, radius } from '@/theme/spacing'
@@ -29,21 +25,40 @@ interface DiscoverUser {
     bio: string
     avatarColor: string
   }
-  teachSkills: Array<{ skillName: string; skillIcon: string; level: number }>
-  learnSkills: Array<{ skillName: string; skillIcon: string; targetLevel: number }>
+  teachSkills: { skillName: string; skillIcon: string; level: number }[]
+  learnSkills: { skillName: string; skillIcon: string; targetLevel: number }[]
   reputation: { avgRating: number; totalSessions: number }
   matchScore: number
-  sharedSkills: Array<{
+  sharedSkills: {
     skillName: string
     skillIcon: string
     direction: 'they_teach' | 'i_teach'
     theirLevel?: number
     myLevel?: number
-  }>
+  }[]
+  scoreBreakdown?: {
+    theyTeach: number
+    iTeach: number
+    mutualBonus: number
+    sharedDepth: number
+    reliability: number
+    recency: number
+    intent?: 'quick_lesson' | 'long_term_mentorship' | 'practice_buddy' | string
+  }
+}
+
+interface PendingMatch {
+  _id: string
+  users: {
+    _id: string
+    username: string
+    profile: { firstName: string; lastName: string; avatarColor: string }
+  }[]
+  initiator: string
+  status: 'pending' | 'accepted' | 'rejected'
 }
 
 function SkillChip({ icon, name, level, color }: { icon: string; name: string; level: number; color: string }) {
-  const { colors } = useTheme()
   const levelInfo = getLevelByValue(level)
   return (
     <View style={{
@@ -75,10 +90,12 @@ function MatchCard({
   const lastName = user.profile?.lastName || ''
   const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : user.username
   const avatarColor = user.profile?.avatarColor || getAvatarColor(user._id || user.username)
+  const recentlyActive = user.profile && (new Date().getTime() - new Date((user as any).profile?.lastActiveAt || Date.now()).getTime()) < (1000 * 60 * 60 * 48)
 
   const theyTeach = user.sharedSkills?.filter(s => s.direction === 'they_teach') || []
   const iTeach = user.sharedSkills?.filter(s => s.direction === 'i_teach') || []
   const isMutual = theyTeach.length > 0 && iTeach.length > 0
+  const intentLabel = (user.scoreBreakdown?.intent || 'practice_buddy').replace(/_/g, ' ')
 
   return (
     <View style={{
@@ -110,6 +127,11 @@ function MatchCard({
           <View style={{ flex: 1, marginLeft: spacing.md }}>
             <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 16, color: colors.textPrimary }}>{fullName}</Text>
             <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.textMuted }}>@{user.username}</Text>
+            {recentlyActive && (
+              <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.success, marginTop: 2 }}>
+                Active recently
+              </Text>
+            )}
           </View>
           {user.reputation?.totalSessions > 0 && (
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: `${colors.warning}15`, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
@@ -119,6 +141,18 @@ function MatchCard({
               </Text>
             </View>
           )}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+          <View style={{ backgroundColor: `${colors.primary}14`, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 3, marginRight: spacing.xs }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 10, color: colors.primary }}>
+              {intentLabel}
+            </Text>
+          </View>
+          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 10, color: colors.textMuted }}>
+              {user.sharedSkills?.length || 0} shared signals
+            </Text>
+          </View>
         </View>
 
         {/* Bio */}
@@ -142,6 +176,21 @@ function MatchCard({
           </View>
         )}
 
+        {user.scoreBreakdown && (
+          <View style={{ marginBottom: spacing.md }}>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.textMuted, marginBottom: spacing.xs }}>
+              Why this match
+            </Text>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>
+              Teach fit {user.scoreBreakdown.theyTeach}, learn fit {user.scoreBreakdown.iTeach},
+              mutual +{user.scoreBreakdown.mutualBonus}, reliability +{user.scoreBreakdown.reliability}
+            </Text>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.primary, marginTop: 4 }}>
+              Recommended format: {intentLabel}
+            </Text>
+          </View>
+        )}
+
         {/* Wants to learn from you */}
         {iTeach.length > 0 && (
           <View style={{ marginBottom: spacing.md }}>
@@ -159,6 +208,7 @@ function MatchCard({
         {/* Actions */}
         <View style={{ flexDirection: 'row', gap: spacing.sm }}>
           <TouchableOpacity
+            activeOpacity={0.8}
             onPress={onSkip}
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -170,6 +220,7 @@ function MatchCard({
             <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 14, color: colors.textMuted }}>Skip</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            activeOpacity={0.85}
             onPress={onConnect}
             disabled={connecting}
             style={{
@@ -188,6 +239,27 @@ function MatchCard({
             )}
           </TouchableOpacity>
         </View>
+      </View>
+    </View>
+  )
+}
+
+function MatchSkeleton() {
+  const { colors } = useTheme()
+  return (
+    <View style={{ backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.base, padding: spacing.base }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceAlt }} />
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
+          <View style={{ width: '40%', height: 12, backgroundColor: colors.surfaceAlt, borderRadius: 6, marginBottom: spacing.xs }} />
+          <View style={{ width: '25%', height: 10, backgroundColor: colors.surfaceAlt, borderRadius: 5 }} />
+        </View>
+      </View>
+      <View style={{ width: '85%', height: 10, backgroundColor: colors.surfaceAlt, borderRadius: 5, marginBottom: spacing.xs }} />
+      <View style={{ width: '70%', height: 10, backgroundColor: colors.surfaceAlt, borderRadius: 5, marginBottom: spacing.md }} />
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <View style={{ flex: 1, height: 36, borderRadius: radius.md, backgroundColor: colors.surfaceAlt }} />
+        <View style={{ flex: 2, height: 36, borderRadius: radius.md, backgroundColor: colors.surfaceAlt }} />
       </View>
     </View>
   )
@@ -240,30 +312,46 @@ export default function DiscoverScreen() {
   const firstName = user?.profile?.firstName || user?.username || 'there'
 
   const [users, setUsers] = useState<DiscoverUser[]>([])
-  const [pending, setPending] = useState<any[]>([])
+  const [pending, setPending] = useState<PendingMatch[]>([])
+  const [sent, setSent] = useState<PendingMatch[]>([])
+  const [matched, setMatched] = useState<PendingMatch[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingDots, setLoadingDots] = useState('.')
   const [refreshing, setRefreshing] = useState(false)
   const [connectingId, setConnectingId] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const toast = useToast()
 
-  const fetchDiscover = useCallback(async () => {
+  const fetchDiscover = useCallback(async (silent = false) => {
     try {
-      const [discoverRes, pendingRes] = await Promise.all([
+      const [discoverRes, pendingRes, sentRes, acceptedRes] = await Promise.all([
         api.get('/discover?limit=20'),
         api.get('/matches/pending'),
+        api.get('/matches?status=pending'),
+        api.get('/matches?status=accepted'),
       ])
       setUsers(discoverRes.data.data?.users || [])
-      setPending(pendingRes.data.data || [])
+      const pendingList: PendingMatch[] = pendingRes.data.data || []
+      setPending(pendingList)
+      const allPending: PendingMatch[] = sentRes.data.data || []
+      setSent(allPending.filter((m) => m.initiator === user?._id))
+      setMatched(acceptedRes.data.data || [])
     } catch (err) {
-      if (!refreshing) toast.error(getApiError(err))
+      if (!silent) toast.error(getApiError(err))
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [toast, user?._id])
 
   useEffect(() => { fetchDiscover() }, [fetchDiscover])
+  useEffect(() => {
+    if (!loading) return
+    const id = setInterval(() => {
+      setLoadingDots((d) => (d.length >= 3 ? '.' : `${d}.`))
+    }, 350)
+    return () => clearInterval(id)
+  }, [loading])
 
   const handleConnect = async (userId: string) => {
     setConnectingId(userId)
@@ -311,14 +399,28 @@ export default function DiscoverScreen() {
 
   const onRefresh = () => {
     setRefreshing(true)
-    fetchDiscover()
+    fetchDiscover(true)
   }
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textMuted, marginTop: spacing.md }}>Finding matches...</Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md }}>
+          <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.5 }}>
+            Discover
+          </Text>
+          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textMuted, marginTop: spacing.xs }}>
+            Looking for your best matches{loadingDots}
+          </Text>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.base }}>
+          <MatchSkeleton />
+          <MatchSkeleton />
+          <MatchSkeleton />
+          <View style={{ marginTop: spacing.lg, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     )
   }
@@ -332,28 +434,60 @@ export default function DiscoverScreen() {
       >
         {/* Header */}
         <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{
+            backgroundColor: colors.primary,
+            borderRadius: radius.xl,
+            paddingHorizontal: spacing.base,
+            paddingVertical: spacing.base,
+            borderWidth: 1,
+            borderColor: `${colors.primaryLight}80`,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: '#E9EDFF', marginBottom: 2 }}>
+                  Discover your next skill exchange
+                </Text>
+                <Text style={{ fontFamily: 'Inter_800ExtraBold', fontSize: 26, color: '#FFFFFF', letterSpacing: -0.5 }}>
+                  {firstName} 👋
+                </Text>
+              </View>
+              <TouchableOpacity style={{
+                width: 42, height: 42, borderRadius: 21,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+                borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Ionicons name="sparkles-outline" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={{
+            marginTop: spacing.md,
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: radius.lg,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm + 2,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
             <View>
-              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.textMuted, marginBottom: 2 }}>
-                Good day,
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textPrimary }}>
+                Network Snapshot
               </Text>
-              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.5 }}>
-                {firstName} 👋
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                Pending {pending.length} | Sent {sent.length} | Matched {matched.length}
               </Text>
             </View>
-            <TouchableOpacity style={{
-              width: 40, height: 40, borderRadius: 20,
-              backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
+            <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
           </View>
         </View>
 
         {/* Pending requests */}
         {pending.length > 0 && (
-          <View style={{ paddingHorizontal: spacing.base, marginBottom: spacing.xl }}>
+          <Animated.View entering={FadeInDown.delay(40).duration(260)} style={{ paddingHorizontal: spacing.base, marginBottom: spacing.xl }}>
             <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.warning, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: spacing.sm }}>
               📩 {pending.length} Pending Request{pending.length > 1 ? 's' : ''}
             </Text>
@@ -367,11 +501,70 @@ export default function DiscoverScreen() {
                 loading={actionLoadingId === match._id}
               />
             ))}
-          </View>
+          </Animated.View>
+        )}
+
+        {/* Sent requests */}
+        {sent.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(80).duration(260)} style={{ paddingHorizontal: spacing.base, marginBottom: spacing.lg }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: spacing.sm }}>
+              📤 Sent Requests ({sent.length})
+            </Text>
+            {sent.map((match) => {
+              const other = match.users?.find((u) => u._id !== user?._id)
+              if (!other) return null
+              const name = other.profile?.firstName ? `${other.profile.firstName} ${other.profile.lastName || ''}`.trim() : other.username
+              const avatarColor = other.profile?.avatarColor || getAvatarColor(other._id)
+              return (
+                <View key={match._id} style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  backgroundColor: colors.surfaceAlt, borderRadius: radius.lg,
+                  padding: spacing.md, marginBottom: spacing.xs,
+                  borderWidth: 1, borderColor: colors.border,
+                }}>
+                  <Avatar firstName={other.profile?.firstName || ''} lastName={other.profile?.lastName || other.username} color={avatarColor} size={36} />
+                  <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                    <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textPrimary }}>{name}</Text>
+                    <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted }}>Request sent - waiting for response</Text>
+                  </View>
+                  <Ionicons name="time-outline" size={16} color={colors.warning} />
+                </View>
+              )
+            })}
+          </Animated.View>
+        )}
+
+        {matched.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(120).duration(260)} style={{ paddingHorizontal: spacing.base, marginBottom: spacing.lg }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.success, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: spacing.sm }}>
+              ✅ Matched ({matched.length})
+            </Text>
+            {matched.slice(0, 3).map((match) => {
+              const other = match.users?.find((u) => u._id !== user?._id)
+              if (!other) return null
+              const name = other.profile?.firstName ? `${other.profile.firstName} ${other.profile.lastName || ''}`.trim() : other.username
+              const avatarColor = other.profile?.avatarColor || getAvatarColor(other._id)
+              return (
+                <View key={match._id} style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  backgroundColor: `${colors.success}10`, borderRadius: radius.lg,
+                  padding: spacing.md, marginBottom: spacing.xs,
+                  borderWidth: 1, borderColor: `${colors.success}30`,
+                }}>
+                  <Avatar firstName={other.profile?.firstName || ''} lastName={other.profile?.lastName || other.username} color={avatarColor} size={36} />
+                  <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                    <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textPrimary }}>{name}</Text>
+                    <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted }}>You can message and schedule sessions now</Text>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                </View>
+              )
+            })}
+          </Animated.View>
         )}
 
         {/* Discover results */}
-        <View style={{ paddingHorizontal: spacing.base }}>
+        <Animated.View entering={FadeInUp.delay(160).duration(300)} style={{ paddingHorizontal: spacing.base }}>
           {users.length > 0 ? (
             <>
               <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: spacing.md }}>
@@ -401,11 +594,11 @@ export default function DiscoverScreen() {
                 No matches right now
               </Text>
               <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 21, maxWidth: 260 }}>
-                As more people join, you'll see skill matches here. Pull down to refresh!
+                As more people join, you'll see skill matches here. Check "Sent Requests" above or pull down to refresh.
               </Text>
             </View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   )
