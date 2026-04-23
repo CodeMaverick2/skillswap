@@ -29,6 +29,19 @@ interface ConversationItem {
   unread: number
 }
 
+function ConversationSkeleton() {
+  const { colors } = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.base, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceAlt }} />
+      <View style={{ flex: 1, marginLeft: spacing.md }}>
+        <View style={{ width: '45%', height: 12, borderRadius: 6, backgroundColor: colors.surfaceAlt, marginBottom: spacing.xs }} />
+        <View style={{ width: '75%', height: 10, borderRadius: 5, backgroundColor: colors.surfaceAlt }} />
+      </View>
+    </View>
+  )
+}
+
 function ConversationRow({ conversation, myId, onPress }: { conversation: ConversationItem; myId: string; onPress: () => void }) {
   const { colors } = useTheme()
   const other = conversation.participants?.find(p => p._id !== myId)
@@ -136,6 +149,12 @@ export default function MessagesScreen() {
   }, [])
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchConversations()
+    }, 10000)
+    return () => clearInterval(id)
+  }, [fetchConversations])
 
   const onRefresh = () => {
     setRefreshing(true)
@@ -144,8 +163,17 @@ export default function MessagesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.5 }}>Messages</Text>
+        </View>
+        <ConversationSkeleton />
+        <ConversationSkeleton />
+        <ConversationSkeleton />
+        <ConversationSkeleton />
+        <View style={{ marginTop: spacing.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
       </SafeAreaView>
     )
   }
@@ -153,13 +181,22 @@ export default function MessagesScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
-      <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.5 }}>Messages</Text>
+      <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md }}>
+        <View style={{
+          backgroundColor: colors.secondary,
+          borderRadius: radius.xl,
+          paddingHorizontal: spacing.base,
+          paddingVertical: spacing.base,
+          borderWidth: 1,
+          borderColor: `${colors.secondary}AA`,
+        }}>
+        <Text style={{ fontFamily: 'Inter_800ExtraBold', fontSize: 26, color: '#fff', letterSpacing: -0.5 }}>Messages</Text>
         {conversations.length > 0 && (
-          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textSecondary, marginTop: 3 }}>
+          <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: '#FFE8F2', marginTop: 3 }}>
             {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
           </Text>
         )}
+        </View>
       </View>
 
       {conversations.length > 0 ? (
