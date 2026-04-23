@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Keyboard,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -11,13 +11,12 @@ import { spacing, radius } from '@/theme/spacing'
 import { Avatar } from '@/components/ui/Avatar'
 import { getAvatarColor } from '@/utils/avatarColor'
 import { useAuthStore } from '@/store/auth.store'
-import api from '@/services/api'
+import api, { SOCKET_URL } from '@/services/api'
 import { useToast } from '@/hooks/useToast'
 import { getApiError } from '@/utils/apiError'
 import { io, Socket } from 'socket.io-client'
 import { formatDistanceToNow } from 'date-fns'
-
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://localhost:5000'
+import Animated, { FadeInDown } from 'react-native-reanimated'
 
 interface ChatMessage {
   _id: string
@@ -81,6 +80,14 @@ function MessageBubble({ message, isMe }: { message: ChatMessage; isMe: boolean 
       }}>
         {timeAgo}
       </Text>
+      {isMe && !isSystem && (
+        <Text style={{
+          fontFamily: 'Inter_400Regular', fontSize: 10, color: colors.textMuted,
+          marginTop: 1, marginHorizontal: spacing.xs,
+        }}>
+          {message.readBy?.length > 1 ? 'Read' : 'Sent'}
+        </Text>
+      )}
     </View>
   )
 }
@@ -93,6 +100,10 @@ export default function ConversationScreen() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [socketConnected, setSocketConnected] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [otherUser, setOtherUser] = useState<any>(null)
@@ -101,9 +112,20 @@ export default function ConversationScreen() {
   const [sessionTopic, setSessionTopic] = useState('')
   const [sessionDate, setSessionDate] = useState('')
   const [sessionDuration, setSessionDuration] = useState('60')
+  const [meetingLink, setMeetingLink] = useState('https://meet.google.com/new')
   const [scheduling, setScheduling] = useState(false)
   const [matchId, setMatchId] = useState<string | null>(null)
+  const [suggestedSlots, setSuggestedSlots] = useState<string[]>([])
+  const introPrompts = [
+    'Hi! Excited to connect - what do you want to learn first?',
+    'Want to schedule a quick 30-minute intro session this week?',
+    'I can start with a beginner-friendly walkthrough. Interested?',
+  ]
   const toast = useToast()
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(tabs)/messages')
+  }
 
   const socketRef = useRef<Socket | null>(null)
   const flatListRef = useRef<FlatList>(null)
@@ -114,10 +136,12 @@ export default function ConversationScreen() {
     const fetchMessages = async () => {
       try {
         const [msgRes, convRes] = await Promise.all([
-          api.get(`/messages/${id}?limit=50`),
+          api.get(`/messages/${id}?limit=30&page=1`),
           api.get('/messages/conversations'),
         ])
         setMessages(msgRes.data.data?.messages || [])
+        setPage(msgRes.data.data?.page || 1)
+        setTotalPages(msgRes.data.data?.totalPages || 1)
 
         const conv = (convRes.data.data || []).find((c: any) => c._id === id)
         if (conv) {
@@ -147,9 +171,11 @@ export default function ConversationScreen() {
     })
 
     socket.on('connect', () => {
+      setSocketConnected(true)
       socket.emit('join_conversation', id)
       socket.emit('mark_read', { conversationId: id })
     })
+    socket.on('disconnect', () => setSocketConnected(false))
 
     socket.on('new_message', (msg: ChatMessage) => {
       if (msg.conversationId === id) {
@@ -171,6 +197,7 @@ export default function ConversationScreen() {
     return () => {
       socket.emit('leave_conversation', id)
       socket.disconnect()
+      setSocketConnected(false)
       socketRef.current = null
     }
   }, [id, accessToken])
@@ -256,16 +283,51 @@ export default function ConversationScreen() {
         scheduledAt: parsedDate.toISOString(),
         duration: parseInt(sessionDuration) || 60,
         topic: sessionTopic.trim(),
+        meetingLink: meetingLink.trim() || 'https://meet.google.com/new',
       })
       toast.success('Session scheduled!')
       setShowSchedule(false)
       setSessionTopic('')
       setSessionDate('')
       setSessionDuration('60')
+      setMeetingLink('https://meet.google.com/new')
     } catch (err) {
       toast.error(getApiError(err))
     } finally {
       setScheduling(false)
+    }
+  }
+
+  const fetchSlots = async () => {
+    if (!matchId) return
+    try {
+      const from = new Date().toISOString()
+      const to = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString()
+      const res = await api.get(`/sessions/slots?matchId=${matchId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+      const slots: string[] = res.data.data || []
+      setSuggestedSlots(slots.slice(0, 4))
+    } catch {
+      toast.error('Unable to fetch suggested slots')
+    }
+  }
+
+  const sendIntroPrompt = (prompt: string) => {
+    setText(prompt)
+  }
+
+  const loadOlderMessages = async () => {
+    if (loadingMore || page >= totalPages) return
+    setLoadingMore(true)
+    try {
+      const nextPage = page + 1
+      const res = await api.get(`/messages/${id}?limit=30&page=${nextPage}`)
+      const older = res.data.data?.messages || []
+      setMessages((prev) => [...older, ...prev])
+      setPage(nextPage)
+    } catch {
+      toast.error('Failed to load older messages')
+    } finally {
+      setLoadingMore(false)
     }
   }
 
@@ -292,7 +354,7 @@ export default function ConversationScreen() {
         borderBottomWidth: 1, borderBottomColor: colors.border,
         backgroundColor: colors.surface,
       }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.sm, padding: 4 }}>
+        <TouchableOpacity activeOpacity={0.75} onPress={goBackSafe} style={{ marginRight: spacing.sm, padding: 4 }}>
           <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         {otherUser && (
@@ -300,11 +362,16 @@ export default function ConversationScreen() {
         )}
         <View style={{ flex: 1, marginLeft: spacing.sm }}>
           <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 16, color: colors.textPrimary }}>{otherName}</Text>
-          {isTyping && (
+          {isTyping ? (
             <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.primary }}>typing...</Text>
+          ) : (
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: socketConnected ? colors.success : colors.warning }}>
+              {socketConnected ? 'online' : 'reconnecting...'}
+            </Text>
           )}
         </View>
         <TouchableOpacity
+          activeOpacity={0.8}
           onPress={() => setShowSchedule(!showSchedule)}
           style={{ padding: 6, backgroundColor: showSchedule ? `${colors.primary}15` : 'transparent', borderRadius: radius.sm }}
         >
@@ -314,7 +381,7 @@ export default function ConversationScreen() {
 
       {/* Schedule Session Form */}
       {showSchedule && (
-        <View style={{
+        <Animated.View entering={FadeInDown.duration(220)} style={{
           borderBottomWidth: 1, borderBottomColor: colors.border,
           backgroundColor: colors.surface, padding: spacing.base,
         }}>
@@ -363,6 +430,21 @@ export default function ConversationScreen() {
               selectionColor={colors.primary}
             />
           </View>
+          <TextInput
+            value={meetingLink}
+            onChangeText={setMeetingLink}
+            placeholder="Meeting link (default: Google Meet)"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textPrimary,
+              backgroundColor: colors.surfaceAlt, borderRadius: radius.sm,
+              paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+              borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
+            }}
+            selectionColor={colors.primary}
+          />
           <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted, marginBottom: spacing.sm }}>
             Date format: YYYY-MM-DD HH:mm · Duration in minutes
           </Text>
@@ -379,6 +461,78 @@ export default function ConversationScreen() {
               {scheduling ? 'Scheduling...' : 'Schedule Session'}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={fetchSlots}
+            style={{
+              marginTop: spacing.sm,
+              borderRadius: radius.sm,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingVertical: spacing.xs + 2,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.textSecondary }}>
+              Suggest available slots
+            </Text>
+          </TouchableOpacity>
+          {suggestedSlots.length > 0 && (
+            <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+              {suggestedSlots.map((slot) => (
+                <TouchableOpacity
+                  key={slot}
+                  onPress={() => setSessionDate(slot.slice(0, 16).replace('T', ' '))}
+                  style={{
+                    backgroundColor: `${colors.primary}12`,
+                    borderRadius: radius.sm,
+                    borderWidth: 1,
+                    borderColor: `${colors.primary}30`,
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: spacing.xs,
+                  }}
+                >
+                  <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.primary }}>
+                    {new Date(slot).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </Animated.View>
+      )}
+
+      {messages.length <= 1 && (
+        <View style={{
+          paddingHorizontal: spacing.base,
+          paddingVertical: spacing.sm,
+          backgroundColor: colors.surface,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}>
+          <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs }}>
+            Smart intro prompts
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
+            {introPrompts.map((prompt, idx) => (
+              <TouchableOpacity
+                key={idx}
+                activeOpacity={0.85}
+                onPress={() => sendIntroPrompt(prompt)}
+                style={{
+                  backgroundColor: `${colors.primary}14`,
+                  borderRadius: radius.full,
+                  borderWidth: 1,
+                  borderColor: `${colors.primary}30`,
+                  paddingHorizontal: spacing.md + 2,
+                  paddingVertical: spacing.xs + 2,
+                }}
+              >
+                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.primary }}>
+                  {prompt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       )}
 
@@ -396,11 +550,40 @@ export default function ConversationScreen() {
           onLayout={() => { if (messages.length > 0) flatListRef.current?.scrollToEnd({ animated: false }) }}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', padding: spacing.xl }}>
-              <Text style={{ fontSize: 36, marginBottom: spacing.sm }}>👋</Text>
+              <View style={{
+                width: 72, height: 72, borderRadius: 36,
+                backgroundColor: `${colors.primary}12`,
+                alignItems: 'center', justifyContent: 'center',
+                marginBottom: spacing.md,
+              }}>
+                <Text style={{ fontSize: 30 }}>👋</Text>
+              </View>
               <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.textMuted, textAlign: 'center' }}>
                 Say hello to start the conversation!
               </Text>
             </View>
+          }
+          ListHeaderComponent={
+            page < totalPages ? (
+              <TouchableOpacity
+                onPress={loadOlderMessages}
+                disabled={loadingMore}
+                style={{
+                  alignSelf: 'center',
+                  marginBottom: spacing.md,
+                  backgroundColor: colors.surfaceAlt,
+                  borderRadius: radius.full,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.xs + 2,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.textSecondary }}>
+                  {loadingMore ? 'Loading older...' : 'Load older messages'}
+                </Text>
+              </TouchableOpacity>
+            ) : null
           }
         />
 
@@ -434,6 +617,7 @@ export default function ConversationScreen() {
             />
           </View>
           <TouchableOpacity
+            activeOpacity={0.85}
             onPress={handleSend}
             disabled={!text.trim() || sending}
             style={{
