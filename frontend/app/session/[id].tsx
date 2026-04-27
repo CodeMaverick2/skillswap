@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Linking } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -27,10 +27,18 @@ export default function SessionDetailScreen() {
   const router = useRouter()
   const { user } = useAuthStore()
   const toast = useToast()
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(tabs)/sessions')
+  }
 
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [note, setNote] = useState('')
+  const [feedbackScore, setFeedbackScore] = useState('5')
+  const [feedbackComment, setFeedbackComment] = useState('')
+  const [nextSteps, setNextSteps] = useState('')
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -81,6 +89,28 @@ export default function SessionDetailScreen() {
     } catch (err) { toast.error(getApiError(err)) } finally { setActionLoading(false) }
   }
 
+  const handleSaveNote = async () => {
+    try {
+      await api.put(`/sessions/${id}/notes`, { note })
+      toast.success('Notes saved')
+    } catch (err) {
+      toast.error(getApiError(err))
+    }
+  }
+
+  const handleSubmitFeedback = async () => {
+    try {
+      await api.put(`/sessions/${id}/feedback`, {
+        score: Number(feedbackScore) || 5,
+        comment: feedbackComment,
+        nextSteps,
+      })
+      toast.success('Feedback submitted')
+    } catch (err) {
+      toast.error(getApiError(err))
+    }
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -94,7 +124,7 @@ export default function SessionDetailScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 40, marginBottom: spacing.md }}>😕</Text>
         <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 18, color: colors.textPrimary }}>Session not found</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: spacing.xl }}>
+        <TouchableOpacity onPress={goBackSafe} style={{ marginTop: spacing.xl }}>
           <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.primary }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -110,6 +140,15 @@ export default function SessionDetailScreen() {
   const canConfirm = session.status === 'pending' && session.createdBy !== user?._id
   const canCancel = session.status === 'pending' || session.status === 'confirmed'
   const canComplete = session.status === 'confirmed'
+  const handleOpenMeeting = async () => {
+    const url = session.meetingLink || 'https://meet.google.com/new'
+    const supported = await Linking.canOpenURL(url)
+    if (!supported) {
+      toast.error('Invalid meeting link')
+      return
+    }
+    await Linking.openURL(url)
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -119,7 +158,7 @@ export default function SessionDetailScreen() {
         paddingHorizontal: spacing.base, paddingVertical: spacing.md,
         borderBottomWidth: 1, borderBottomColor: colors.border,
       }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
+        <TouchableOpacity onPress={goBackSafe} style={{ marginRight: spacing.md }}>
           <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 17, color: colors.textPrimary }}>Session Details</Text>
@@ -188,6 +227,15 @@ export default function SessionDetailScreen() {
               <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 21 }}>{session.notes}</Text>
             </View>
           ) : null}
+
+          <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted, marginBottom: 6 }}>Meeting link</Text>
+            <TouchableOpacity onPress={handleOpenMeeting} style={{ alignSelf: 'flex-start', backgroundColor: `${colors.primary}12`, borderWidth: 1, borderColor: `${colors.primary}30`, borderRadius: radius.md, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 }}>
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.primary }}>
+                Join meeting
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Actions */}
@@ -232,6 +280,87 @@ export default function SessionDetailScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Session notes */}
+        <View style={{
+          backgroundColor: colors.surface, borderRadius: radius.lg,
+          borderWidth: 1, borderColor: colors.border, marginTop: spacing.xl,
+          padding: spacing.base,
+        }}>
+          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary, marginBottom: spacing.sm }}>
+            Private session notes
+          </Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="Write notes for this session..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            style={{
+              minHeight: 80,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: spacing.sm,
+              fontFamily: 'Inter_400Regular',
+              color: colors.textPrimary,
+            }}
+          />
+          <TouchableOpacity onPress={handleSaveNote} style={{ marginTop: spacing.sm, alignSelf: 'flex-end' }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary }}>Save note</Text>
+          </TouchableOpacity>
+        </View>
+
+        {session.status === 'completed' && (
+          <View style={{
+            backgroundColor: colors.surface, borderRadius: radius.lg,
+            borderWidth: 1, borderColor: colors.border, marginTop: spacing.md,
+            padding: spacing.base,
+          }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary, marginBottom: spacing.sm }}>
+              Post-session feedback
+            </Text>
+            <TextInput
+              value={feedbackScore}
+              onChangeText={setFeedbackScore}
+              keyboardType="number-pad"
+              placeholder="Score 1-5"
+              placeholderTextColor={colors.textMuted}
+              style={{
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+                paddingHorizontal: spacing.sm, paddingVertical: spacing.xs + 2, color: colors.textPrimary, marginBottom: spacing.sm,
+              }}
+            />
+            <TextInput
+              value={feedbackComment}
+              onChangeText={setFeedbackComment}
+              placeholder="How did the session go?"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              style={{
+                minHeight: 60,
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+                padding: spacing.sm, color: colors.textPrimary, marginBottom: spacing.sm,
+              }}
+            />
+            <TextInput
+              value={nextSteps}
+              onChangeText={setNextSteps}
+              placeholder="Next steps agreed"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              style={{
+                minHeight: 60,
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+                padding: spacing.sm, color: colors.textPrimary,
+              }}
+            />
+            <TouchableOpacity onPress={handleSubmitFeedback} style={{ marginTop: spacing.sm, alignSelf: 'flex-end' }}>
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary }}>Submit feedback</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   )
