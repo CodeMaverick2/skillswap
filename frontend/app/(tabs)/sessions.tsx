@@ -12,6 +12,7 @@ import api from '@/services/api'
 import { useToast } from '@/hooks/useToast'
 import { getApiError } from '@/utils/apiError'
 import { format, isToday, isTomorrow, isPast } from 'date-fns'
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
 
 interface SessionItem {
   _id: string
@@ -26,6 +27,17 @@ interface SessionItem {
   notes: string
   status: string
   createdBy: string
+}
+
+function SessionSkeleton() {
+  const { colors } = useTheme()
+  return (
+    <View style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm, padding: spacing.md }}>
+      <View style={{ width: '35%', height: 10, backgroundColor: colors.surfaceAlt, borderRadius: 6, marginBottom: spacing.sm }} />
+      <View style={{ width: '60%', height: 12, backgroundColor: colors.surfaceAlt, borderRadius: 6, marginBottom: spacing.xs }} />
+      <View style={{ width: '80%', height: 10, backgroundColor: colors.surfaceAlt, borderRadius: 6 }} />
+    </View>
+  )
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
@@ -43,18 +55,27 @@ function formatSessionDate(dateStr: string): string {
   return format(date, 'MMM d · h:mm a')
 }
 
+function getPastReason(session: SessionItem): string {
+  if (session.status === 'completed') return 'Completed session'
+  if (session.status === 'cancelled') return 'Cancelled by a participant'
+  if (isPast(new Date(session.scheduledAt))) return 'Scheduled time already passed'
+  return 'Moved from upcoming timeline'
+}
+
 function SessionCard({
   session,
   myId,
   onConfirm,
   onCancel,
   actionLoading,
+  showPastReason = false,
 }: {
   session: SessionItem
   myId: string
   onConfirm: () => void
   onCancel: () => void
   actionLoading: boolean
+  showPastReason?: boolean
 }) {
   const { colors } = useTheme()
   const other = session.participants?.find(p => p._id !== myId)
@@ -115,6 +136,22 @@ function SessionCard({
             📝 {session.topic}
           </Text>
         </View>
+
+        {showPastReason && (
+          <View style={{
+            backgroundColor: `${colors.warning}12`,
+            borderRadius: radius.sm,
+            paddingHorizontal: spacing.sm,
+            paddingVertical: spacing.xs,
+            marginBottom: spacing.sm,
+            borderWidth: 1,
+            borderColor: `${colors.warning}30`,
+          }}>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.warning }}>
+              Why in past: {getPastReason(session)}
+            </Text>
+          </View>
+        )}
 
         {/* Actions */}
         {(canConfirm || canCancel) && (
@@ -206,8 +243,18 @@ export default function SessionsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md }}>
+          <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.5 }}>Sessions</Text>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.base }}>
+          <SessionSkeleton />
+          <SessionSkeleton />
+          <SessionSkeleton />
+          <View style={{ marginTop: spacing.lg, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     )
   }
@@ -216,19 +263,34 @@ export default function SessionsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, paddingBottom: spacing.md }}>
-        <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.5 }}>Sessions</Text>
+        <View style={{
+          backgroundColor: colors.accent,
+          borderRadius: radius.xl,
+          paddingHorizontal: spacing.base,
+          paddingVertical: spacing.base,
+          borderWidth: 1,
+          borderColor: `${colors.accent}AA`,
+        }}>
+          <Text style={{ fontFamily: 'Inter_800ExtraBold', fontSize: 26, color: '#08332C', letterSpacing: -0.5 }}>Sessions</Text>
+          <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: '#0D4B40', marginTop: 2 }}>
+            Plan, confirm, and review every learning exchange
+          </Text>
+        </View>
       </View>
 
       {/* Tabs */}
       <View style={{ flexDirection: 'row', paddingHorizontal: spacing.base, marginBottom: spacing.md }}>
         {(['upcoming', 'past'] as const).map(tab => (
           <TouchableOpacity
+            activeOpacity={0.85}
             key={tab}
             onPress={() => setActiveTab(tab)}
             style={{
               flex: 1, alignItems: 'center', paddingVertical: spacing.sm,
               borderBottomWidth: 2,
-              borderBottomColor: activeTab === tab ? colors.primary : colors.border,
+              borderBottomColor: activeTab === tab ? colors.primary : 'transparent',
+              backgroundColor: activeTab === tab ? `${colors.primary}12` : 'transparent',
+              borderRadius: radius.md,
             }}
           >
             <Text style={{
@@ -242,24 +304,45 @@ export default function SessionsScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      <View style={{ paddingHorizontal: spacing.base, marginBottom: spacing.md }}>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: radius.md,
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: spacing.xs + 2,
+        }}>
+          <Ionicons name="information-circle-outline" size={16} color={colors.primary} style={{ marginRight: spacing.xs }} />
+          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary }}>
+            {activeTab === 'upcoming'
+              ? 'Confirm pending sessions early to avoid conflicts.'
+              : 'Use past sessions to review what worked and plan next steps.'}
+          </Text>
+        </View>
+      </View>
 
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: spacing['2xl'] }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchSessions() }} tintColor={colors.primary} />}
       >
         {displaySessions.length > 0 ? (
-          displaySessions.map(session => (
-            <SessionCard
-              key={session._id}
-              session={session}
-              myId={user?._id || ''}
-              onConfirm={() => handleConfirm(session._id)}
-              onCancel={() => handleCancel(session._id)}
-              actionLoading={actionLoadingId === session._id}
-            />
+          displaySessions.map((session, idx) => (
+            <Animated.View key={session._id} entering={FadeInDown.delay(30 * Math.min(idx, 8)).duration(260)}>
+              <SessionCard
+                session={session}
+                myId={user?._id || ''}
+                onConfirm={() => handleConfirm(session._id)}
+                onCancel={() => handleCancel(session._id)}
+                actionLoading={actionLoadingId === session._id}
+                showPastReason={activeTab === 'past'}
+              />
+            </Animated.View>
           ))
         ) : (
-          <View style={{ alignItems: 'center', paddingVertical: spacing['3xl'] }}>
+          <Animated.View entering={FadeInUp.duration(280)} style={{ alignItems: 'center', paddingVertical: spacing['3xl'] }}>
             <View style={{
               width: 72, height: 72, borderRadius: 36,
               backgroundColor: `${colors.primary}12`,
@@ -290,7 +373,7 @@ export default function SessionsScreen() {
                 <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 15, color: '#fff' }}>Find Partners</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </Animated.View>
         )}
       </ScrollView>
     </SafeAreaView>
