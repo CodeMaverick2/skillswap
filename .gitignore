@@ -8,5 +8,6 @@ coverage/
 .vscode/
 .idea/
 PLAN.md
+ANALYSIS.md
 memory/
 backend/test-api.js

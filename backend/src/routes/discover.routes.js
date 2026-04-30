@@ -4,6 +4,7 @@ const Match = require('../models/Match');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId, escapeRegex } = require('../utils/validate');
+const { computeMatchScore } = require('../services/match.service');
 
 const router = express.Router();
 
@@ -45,13 +46,23 @@ router.get('/', protect, async (req, res) => {
     .map(s => s.skillName?.toLowerCase())
     .filter(s => s && s.length > 0);
 
+  // Skill IDs let us match across name variants ("React" vs "ReactJS")
+  // when both sides reference the same canonical Skill document.
+  const myLearnSkillIds = (me.learnSkills || [])
+    .map(s => s.skillId)
+    .filter(Boolean);
+  const myTeachSkillIds = (me.teachSkills || [])
+    .map(s => s.skillId)
+    .filter(Boolean);
+
   const query = {
     _id: { $nin: excludeIds },
     isActive: true,
     onboardingCompleted: true,
   };
 
-  // Use $in with case-insensitive regex (escaped to prevent injection)
+  // Eligibility: candidate matches if EITHER skillId or skillName overlaps
+  // in either direction. Name match uses escaped, case-insensitive regex.
   const orConditions = [];
   if (myLearnSkillNames.length > 0) {
     orConditions.push({
@@ -66,6 +77,12 @@ router.get('/', protect, async (req, res) => {
         $in: myTeachSkillNames.map(s => new RegExp(`^${escapeRegex(s)}$`, 'i')),
       },
     });
+  }
+  if (myLearnSkillIds.length > 0) {
+    orConditions.push({ 'teachSkills.skillId': { $in: myLearnSkillIds } });
+  }
+  if (myTeachSkillIds.length > 0) {
+    orConditions.push({ 'learnSkills.skillId': { $in: myTeachSkillIds } });
   }
 
   if (orConditions.length > 0) {
@@ -82,47 +99,9 @@ router.get('/', protect, async (req, res) => {
     User.countDocuments(query),
   ]);
 
-  // Calculate match score for each user
-  const usersWithScore = users.map(user => {
-    let score = 0;
-    const sharedSkills = [];
-
-    for (const myLearn of me.learnSkills || []) {
-      if (!myLearn.skillName) continue;
-      const theirTeach = (user.teachSkills || []).find(
-        t => t.skillName?.toLowerCase() === myLearn.skillName.toLowerCase()
-      );
-      if (theirTeach) {
-        score += 20 + (theirTeach.level || 0) * 5;
-        sharedSkills.push({
-          skillName: theirTeach.skillName,
-          skillIcon: theirTeach.skillIcon,
-          direction: 'they_teach',
-          theirLevel: theirTeach.level,
-        });
-      }
-    }
-
-    for (const theirLearn of user.learnSkills || []) {
-      if (!theirLearn.skillName) continue;
-      const myTeach = (me.teachSkills || []).find(
-        t => t.skillName?.toLowerCase() === theirLearn.skillName.toLowerCase()
-      );
-      if (myTeach) {
-        score += 15 + (myTeach.level || 0) * 3;
-        sharedSkills.push({
-          skillName: myTeach.skillName,
-          skillIcon: myTeach.skillIcon,
-          direction: 'i_teach',
-          myLevel: myTeach.level,
-        });
-      }
-    }
-
-    const theyTeachMe = sharedSkills.some(s => s.direction === 'they_teach');
-    const iTeachThem = sharedSkills.some(s => s.direction === 'i_teach');
-    if (theyTeachMe && iTeachThem) score += 30;
-
+  // Calculate match score for each user via shared service
+  const usersWithScore = users.map((user) => {
+    const { score, sharedSkills } = computeMatchScore(me, user, 'me');
     return { ...user, matchScore: score, sharedSkills };
   });
 

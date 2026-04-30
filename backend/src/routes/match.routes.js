@@ -2,9 +2,11 @@ const express = require('express');
 const Match = require('../models/Match');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const User = require('../models/User');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId } = require('../utils/validate');
+const { computeMatchScore } = require('../services/match.service');
 
 const router = express.Router();
 
@@ -31,10 +33,31 @@ router.post('/connect/:userId', protect, async (req, res) => {
     return res.status(409).json(errorResponse('Connection already exists'));
   }
 
+  // Compute and persist matchScore + sharedSkills so the data isn't dead weight.
+  // The recipient user fetch is cheap (one indexed lookup); failure to load them
+  // shouldn't block the connection — fall back to an empty score in that case.
+  let matchScore = 0;
+  let persistedSharedSkills = [];
+  const otherUser = await User.findById(other)
+    .select('teachSkills learnSkills availability reputation')
+    .lean();
+  if (otherUser) {
+    const result = computeMatchScore(req.user, otherUser, 'initiator');
+    matchScore = result.score;
+    // Match.sharedSkills schema only has skillName/skillIcon/direction; map down.
+    persistedSharedSkills = result.sharedSkills.map((s) => ({
+      skillName: s.skillName,
+      skillIcon: s.skillIcon,
+      direction: s.direction,
+    }));
+  }
+
   const match = await Match.create({
     users: [me, other],
     initiator: me,
     status: 'pending',
+    matchScore,
+    sharedSkills: persistedSharedSkills,
   });
 
   res.status(201).json(successResponse(match, 'Connection request sent'));
