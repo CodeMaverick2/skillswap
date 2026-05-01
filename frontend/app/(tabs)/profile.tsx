@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -17,15 +17,16 @@ import { useAuthStore } from '@/store/auth.store'
 import { useAuth } from '@/hooks/useAuth'
 import { getLevelByValue } from '@/constants/skillLevels'
 import { getAvatarColor } from '@/utils/avatarColor'
+import api from '@/services/api'
+import Animated, { FadeInDown } from 'react-native-reanimated'
 
 interface SkillTagChipProps {
   icon: string
   name: string
   level: number
-  isTeach?: boolean
 }
 
-function SkillTagChip({ icon, name, level, isTeach = true }: SkillTagChipProps) {
+function SkillTagChip({ icon, name, level }: SkillTagChipProps) {
   const { colors } = useTheme()
   const levelInfo = getLevelByValue(level)
   return (
@@ -125,6 +126,29 @@ export default function ProfileScreen() {
   const { user } = useAuthStore()
   const { logout } = useAuth()
   const [loggingOut, setLoggingOut] = useState(false)
+  const [feed, setFeed] = useState<any[]>([])
+  const [goals, setGoals] = useState<any[]>([])
+  const [referrals, setReferrals] = useState<any[]>([])
+
+  useEffect(() => {
+    const loadFeed = async () => {
+      try {
+        const [feedRes, goalsRes, referralRes] = await Promise.all([
+          api.get('/activity/feed?limit=8'),
+          api.get('/goals'),
+          api.get('/referrals/me'),
+        ])
+        setFeed(feedRes.data.data || [])
+        setGoals(goalsRes.data.data || [])
+        setReferrals(referralRes.data.data?.referrals || [])
+      } catch {
+        setFeed([])
+        setGoals([])
+        setReferrals([])
+      }
+    }
+    loadFeed()
+  }, [])
 
   const handleLogout = () => {
     Alert.alert(
@@ -148,7 +172,8 @@ export default function ProfileScreen() {
   if (!user) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <View
+        <Animated.View
+          entering={FadeInDown.duration(260)}
           style={{
             flex: 1,
             alignItems: 'center',
@@ -164,7 +189,7 @@ export default function ProfileScreen() {
           >
             Loading profile...
           </Text>
-        </View>
+        </Animated.View>
       </SafeAreaView>
     )
   }
@@ -183,6 +208,25 @@ export default function ProfileScreen() {
   }
   const teachSkills = user.teachSkills || []
   const learnSkills = user.learnSkills || []
+  const streak = user.progress?.streak || 0
+  const bestStreak = user.progress?.bestStreak || 0
+  const badges = user.progress?.badges || []
+  const createGoalFromSkill = async (skill: any) => {
+    try {
+      const res = await api.post('/goals', {
+        skillId: skill.skillId,
+        skillName: skill.skillName,
+        title: `Reach level ${skill.targetLevel} in ${skill.skillName}`,
+        milestones: [
+          { text: 'Complete first practice session', done: false },
+          { text: 'Finish 3 focused sessions', done: false },
+        ],
+      })
+      setGoals((prev) => [res.data.data, ...prev])
+    } catch {
+      // no-op
+    }
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -191,45 +235,74 @@ export default function ProfileScreen() {
         contentContainerStyle={{ paddingBottom: spacing['3xl'] }}
       >
         {/* Header row */}
-        <View
+        <Animated.View
+          entering={FadeInDown.delay(40).duration(260)}
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
             paddingHorizontal: spacing.base,
             paddingTop: spacing.base,
             marginBottom: spacing.xl,
           }}
         >
-          <Text
-            style={{
-              fontFamily: 'Inter_700Bold',
-              fontSize: 26,
-              color: colors.textPrimary,
-            }}
-          >
-            Profile
-          </Text>
+          <View style={{
+            backgroundColor: colors.info,
+            borderRadius: radius.xl,
+            paddingHorizontal: spacing.base,
+            paddingVertical: spacing.base,
+            borderWidth: 1,
+            borderColor: `${colors.info}AA`,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ fontFamily: 'Inter_800ExtraBold', fontSize: 26, color: '#fff' }}>
+                  Profile
+                </Text>
+                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: '#E9F5FF', marginTop: 2 }}>
+                  Growth, goals, and social proof
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => router.push('/edit-profile')}
+                style={{
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.xs + 2,
+                  borderRadius: radius.full,
+                  backgroundColor: 'rgba(255,255,255,0.18)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <Ionicons name="create-outline" size={16} color="#fff" style={{ marginRight: 4 }} />
+                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: '#fff' }}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Animated.View>
+        <View style={{ paddingHorizontal: spacing.base, marginBottom: spacing.lg }}>
           <TouchableOpacity
-            onPress={() => router.push('/edit-profile')}
+            onPress={() => router.push('/(auth)/onboarding/step2-teach?mode=edit')}
             style={{
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.xs + 2,
-              borderRadius: radius.full,
-              backgroundColor: colors.surfaceAlt,
-              borderWidth: 1,
-              borderColor: colors.border,
               flexDirection: 'row',
               alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: `${colors.primary}12`,
+              borderRadius: radius.md,
+              paddingVertical: spacing.sm + 2,
+              borderWidth: 1,
+              borderColor: `${colors.primary}30`,
             }}
           >
-            <Ionicons name="create-outline" size={16} color={colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.textSecondary }}>Edit</Text>
+            <Ionicons name="sparkles-outline" size={16} color={colors.primary} style={{ marginRight: spacing.xs }} />
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary }}>
+              Update Skills
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Avatar & name section */}
-        <View
+        <Animated.View
+          entering={FadeInDown.delay(80).duration(260)}
           style={{
             alignItems: 'center',
             paddingHorizontal: spacing.base,
@@ -337,10 +410,11 @@ export default function ProfileScreen() {
               </Text>
             </View>
           )}
-        </View>
+        </Animated.View>
 
         {/* Stats row */}
-        <View
+        <Animated.View
+          entering={FadeInDown.delay(120).duration(260)}
           style={{
             marginHorizontal: spacing.base,
             backgroundColor: colors.surface,
@@ -373,6 +447,36 @@ export default function ProfileScreen() {
             }
             label="Completion"
           />
+        </Animated.View>
+
+        {/* Progress row */}
+        <View
+          style={{
+            marginHorizontal: spacing.base,
+            backgroundColor: colors.surface,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.xl,
+            overflow: 'hidden',
+            padding: spacing.base,
+          }}
+        >
+          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm }}>
+            Progress
+          </Text>
+          <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.textPrimary }}>
+            Current streak: {streak} days · Best streak: {bestStreak} days
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.sm }}>
+            {badges.length > 0 ? badges.map((badge) => (
+              <View key={badge} style={{ backgroundColor: `${colors.primary}12`, borderRadius: radius.full, borderWidth: 1, borderColor: `${colors.primary}30`, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginRight: spacing.xs, marginBottom: spacing.xs }}>
+                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.primary }}>{badge.replace(/_/g, ' ')}</Text>
+              </View>
+            )) : (
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textMuted }}>No badges yet. Keep learning.</Text>
+            )}
+          </View>
         </View>
 
         {/* Teaches section */}
@@ -440,7 +544,6 @@ export default function ProfileScreen() {
                   icon={skill.skillIcon || '📚'}
                   name={skill.skillName}
                   level={skill.level}
-                  isTeach
                 />
               ))}
             </View>
@@ -534,7 +637,6 @@ export default function ProfileScreen() {
                   icon={skill.skillIcon || '📖'}
                   name={skill.skillName}
                   level={skill.targetLevel}
-                  isTeach={false}
                 />
               ))}
             </View>
@@ -706,9 +808,139 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Activity feed */}
+        <View
+          style={{
+            marginHorizontal: spacing.base,
+            backgroundColor: colors.surface,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.xl,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Recent Activity
+            </Text>
+          </View>
+          {feed.length > 0 ? (
+            feed.map((item) => (
+              <View key={item._id} style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row' }}>
+                <View style={{
+                  width: 28, height: 28, borderRadius: 14,
+                  backgroundColor: `${colors.primary}14`, alignItems: 'center', justifyContent: 'center',
+                  marginRight: spacing.sm, marginTop: 2,
+                }}>
+                  <Ionicons name="flash-outline" size={14} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textPrimary }}>
+                    {item.title}
+                  </Text>
+                  {!!item.description && (
+                    <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                      {item.description}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md }}>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.textMuted }}>
+                Activity will appear here after matches, sessions, and messages.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Learning goals */}
+        <View
+          style={{
+            marginHorizontal: spacing.base,
+            backgroundColor: colors.surface,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.xl,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Learning Goals
+            </Text>
+          </View>
+          {goals.length > 0 ? goals.slice(0, 4).map((goal) => (
+            <View key={goal._id} style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textPrimary }}>
+                {goal.title}
+              </Text>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                {goal.skillName} · {goal.progress || 0}% · {goal.status}
+              </Text>
+            </View>
+          )) : (
+            <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md }}>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.textMuted, marginBottom: spacing.sm }}>
+                No goals yet. Create one from your learning skills:
+              </Text>
+              {learnSkills.slice(0, 2).map((skill) => (
+                <TouchableOpacity
+                  key={skill.skillId}
+                  onPress={() => createGoalFromSkill(skill)}
+                  style={{
+                    backgroundColor: `${colors.accent}12`,
+                    borderRadius: radius.md,
+                    borderWidth: 1,
+                    borderColor: `${colors.accent}30`,
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: spacing.xs + 2,
+                    marginBottom: spacing.xs,
+                  }}
+                >
+                  <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.accent }}>
+                    Create goal for {skill.skillName}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Referrals */}
+        <View
+          style={{
+            marginHorizontal: spacing.base,
+            backgroundColor: colors.surface,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.xl,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Referrals
+            </Text>
+          </View>
+          <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md }}>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 13, color: colors.textPrimary }}>
+              Code: {user.referralCode || 'Generating...'}
+            </Text>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+              Joined through you: {referrals.length}
+            </Text>
+          </View>
+        </View>
+
         {/* Sign out */}
         <View style={{ paddingHorizontal: spacing.base }}>
           <TouchableOpacity
+            activeOpacity={0.85}
             onPress={handleLogout}
             disabled={loggingOut}
             style={{
