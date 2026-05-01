@@ -12,7 +12,6 @@ import { useAuthStore } from '@/store/auth.store'
 import { useToast } from '@/hooks/useToast'
 import { getApiError } from '@/utils/apiError'
 import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
 import api from '@/services/api'
 
 export default function EditProfileScreen() {
@@ -32,6 +31,10 @@ export default function EditProfileScreen() {
     lastName !== (user?.profile?.lastName || '') ||
     bio !== (user?.profile?.bio || '') ||
     timezone !== (user?.profile?.timezone || 'Asia/Kolkata')
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(tabs)/profile')
+  }
 
   const handleSave = async () => {
     if (!firstName.trim()) { toast.error('First name is required'); return }
@@ -49,7 +52,7 @@ export default function EditProfileScreen() {
       })
       setUser(res.data.data)
       toast.success('Profile updated!')
-      router.back()
+      goBackSafe()
     } catch (err) {
       toast.error(getApiError(err))
     } finally {
@@ -61,10 +64,10 @@ export default function EditProfileScreen() {
     if (hasChanges) {
       Alert.alert('Discard Changes?', 'You have unsaved changes.', [
         { text: 'Keep Editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        { text: 'Discard', style: 'destructive', onPress: goBackSafe },
       ])
     } else {
-      router.back()
+      goBackSafe()
     }
   }
 
@@ -73,19 +76,32 @@ export default function EditProfileScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
           paddingHorizontal: spacing.base, paddingVertical: spacing.md,
-          borderBottomWidth: 1, borderBottomColor: colors.border,
         }}>
-          <TouchableOpacity onPress={handleBack} style={{ padding: 4 }}>
-            <Ionicons name="close" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 17, color: colors.textPrimary }}>Edit Profile</Text>
-          <TouchableOpacity onPress={handleSave} disabled={saving || !hasChanges} style={{ opacity: hasChanges ? 1 : 0.4 }}>
-            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.primary }}>
-              {saving ? 'Saving...' : 'Save'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{
+            backgroundColor: colors.info,
+            borderRadius: radius.xl,
+            paddingHorizontal: spacing.base,
+            paddingVertical: spacing.base,
+            borderWidth: 1,
+            borderColor: `${colors.info}AA`,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <TouchableOpacity onPress={handleBack} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' }}>
+              <Ionicons name="close" size={22} color="#fff" />
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: '#fff' }}>Edit Profile</Text>
+              <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: '#E9F5FF', marginTop: 1 }}>Keep your profile sharp and current</Text>
+            </View>
+            <TouchableOpacity onPress={handleSave} disabled={saving || !hasChanges} style={{ opacity: hasChanges ? 1 : 0.45, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2 }}>
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: '#fff' }}>
+                {saving ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -179,9 +195,11 @@ export default function EditProfileScreen() {
                   Learning {user?.learnSkills?.length || 0} skills
                 </Text>
               </View>
-              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textMuted, marginTop: spacing.sm }}>
-                To update skills, go through onboarding again from settings.
-              </Text>
+              <TouchableOpacity onPress={() => router.push('/(auth)/onboarding/step2-teach?mode=edit')} style={{ marginTop: spacing.sm }}>
+                <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.primary }}>
+                  Update skills now
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>

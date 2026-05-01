@@ -9,6 +9,7 @@ import {
   Dimensions,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, {
@@ -32,6 +33,7 @@ import { MOCK_SKILLS, SKILL_CATEGORIES, MockSkill } from '@/constants/skillCateg
 import { SKILL_LEVELS, getLevelByValue } from '@/constants/skillLevels'
 import api from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
+import { useToast } from '@/hooks/useToast'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 
@@ -221,7 +223,13 @@ function StepProgress({
 export default function Step3LearnScreen() {
   const { colors } = useTheme()
   const router = useRouter()
+  const { mode } = useLocalSearchParams<{ mode?: string }>()
   const { user, setUser } = useAuthStore()
+  const toast = useToast()
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(auth)/onboarding/step2-teach')
+  }
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
@@ -231,6 +239,17 @@ export default function Step3LearnScreen() {
   const [loading, setLoading] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
+  useEffect(() => {
+    const existing = (user?.learnSkills || []).map((s) => {
+      const matched = MOCK_SKILLS.find((m) => m._id === s.skillId || m.name.toLowerCase() === s.skillName?.toLowerCase())
+      return {
+        skill: matched || { _id: s.skillId, name: s.skillName, slug: s.skillName.toLowerCase().replace(/\s+/g, '-'), icon: s.skillIcon || '📚', category: 'Other' },
+        targetLevel: s.targetLevel || 2,
+      }
+    })
+    setSelectedSkills(existing)
+  }, [user?._id])
+
 
   const bottomSheetRef = useRef<BottomSheet>(null)
   const snapPoints = useMemo(() => ['55%', '75%'], [])
@@ -319,18 +338,20 @@ export default function Step3LearnScreen() {
         learnSkills,
       })
 
-      // Mark onboarding as complete
-      const response = await api.put('/users/me', {
-        onboardingCompleted: true,
-      })
-      setUser(response.data.data)
-      setShowCelebration(true)
-    } catch (error: unknown) {
-      // If API fails, mark onboarding completed locally so user can proceed
-      if (user) {
-        setUser({ ...user, onboardingCompleted: true })
+      if (mode === 'edit') {
+        const meRes = await api.get('/users/me')
+        setUser(meRes.data.data)
+        router.replace('/(tabs)/profile')
+      } else {
+        // Mark onboarding as complete
+        const response = await api.put('/users/me', {
+          onboardingCompleted: true,
+        })
+        setUser(response.data.data)
         setShowCelebration(true)
       }
+    } catch (error: unknown) {
+      toast.error('Could not save learning skills. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -341,6 +362,11 @@ export default function Step3LearnScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ flex: 1 }}>
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base }}>
+          <TouchableOpacity onPress={goBackSafe} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+            <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
         <ScrollView
           contentContainerStyle={{
             paddingHorizontal: spacing.base,

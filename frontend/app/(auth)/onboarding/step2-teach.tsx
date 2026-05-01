@@ -8,6 +8,7 @@ import {
   TextInput,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, {
@@ -21,6 +22,7 @@ import { MOCK_SKILLS, SKILL_CATEGORIES, MockSkill } from '@/constants/skillCateg
 import { SKILL_LEVELS, getLevelByValue } from '@/constants/skillLevels'
 import api from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
+import { useToast } from '@/hooks/useToast'
 
 interface SelectedTeachSkill {
   skill: MockSkill
@@ -100,11 +102,28 @@ function StepProgress({
 export default function Step2TeachScreen() {
   const { colors } = useTheme()
   const router = useRouter()
+  const { mode } = useLocalSearchParams<{ mode?: string }>()
   const { user, setUser } = useAuthStore()
+  const toast = useToast()
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(auth)/onboarding/step1-profile')
+  }
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
   const [selectedSkills, setSelectedSkills] = useState<SelectedTeachSkill[]>([])
+  React.useEffect(() => {
+    const existing = (user?.teachSkills || []).map((s) => {
+      const matched = MOCK_SKILLS.find((m) => m._id === s.skillId || m.name.toLowerCase() === s.skillName?.toLowerCase())
+      return {
+        skill: matched || { _id: s.skillId, name: s.skillName, slug: s.skillName.toLowerCase().replace(/\s+/g, '-'), icon: s.skillIcon || '📚', category: 'Other' },
+        level: s.level || 3,
+      }
+    })
+    setSelectedSkills(existing)
+  }, [user?._id])
+
   const [pendingSkill, setPendingSkill] = useState<MockSkill | null>(null)
   const [pendingLevel, setPendingLevel] = useState<number>(3)
   const [loading, setLoading] = useState(false)
@@ -194,10 +213,10 @@ export default function Step2TeachScreen() {
         learnSkills: user?.learnSkills || [],
       })
       setUser(response.data.data)
-      router.push('/(auth)/onboarding/step3-learn')
+      const editQuery = mode === 'edit' ? '?mode=edit' : ''
+      router.push(`/(auth)/onboarding/step3-learn${editQuery}` as never)
     } catch (error: unknown) {
-      // Even if API fails, proceed to next step (skills saved locally)
-      router.push('/(auth)/onboarding/step3-learn')
+      toast.error('Could not save teaching skills. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -208,6 +227,11 @@ export default function Step2TeachScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ flex: 1 }}>
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base }}>
+          <TouchableOpacity onPress={goBackSafe} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+            <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
         <ScrollView
           contentContainerStyle={{
             paddingHorizontal: spacing.base,
