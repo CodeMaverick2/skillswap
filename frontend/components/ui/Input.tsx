@@ -1,4 +1,4 @@
-import React, { useState, forwardRef, useCallback } from 'react'
+import React, { useState, forwardRef } from 'react'
 import {
   View,
   TextInput,
@@ -64,11 +64,16 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: colors.surfaceAlt,
-        borderRadius: radius.md,
+        borderRadius: radius.lg,
         borderWidth: 1.5,
         borderColor,
         paddingHorizontal: spacing.md,
         minHeight: 52,
+        shadowColor: isFocused ? colors.primary : 'transparent',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isFocused ? 0.16 : 0,
+        shadowRadius: 10,
+        elevation: isFocused ? 3 : 0,
       }}>
         {leftIcon && (
           <Ionicons
