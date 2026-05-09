@@ -16,7 +16,19 @@ export default function NotFoundScreen() {
         padding: spacing.xl,
       }}
     >
-      <Text style={{ fontSize: 52, marginBottom: spacing.lg }}>🔍</Text>
+      <View style={{
+        backgroundColor: colors.primary,
+        borderRadius: 20,
+        width: 84,
+        height: 84,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: spacing.lg,
+        borderWidth: 1,
+        borderColor: `${colors.primaryLight}88`,
+      }}>
+        <Text style={{ fontSize: 40 }}>🧭</Text>
+      </View>
       <Text
         style={{
           fontFamily: 'Inter_700Bold',
@@ -26,7 +38,7 @@ export default function NotFoundScreen() {
           marginBottom: spacing.sm,
         }}
       >
-        Page not found
+        Screen not found
       </Text>
       <Text
         style={{
@@ -38,13 +50,13 @@ export default function NotFoundScreen() {
           lineHeight: 22,
         }}
       >
-        The screen you're looking for doesn't exist.
+        This route does not exist in the current app flow.
       </Text>
       <Link href="/(auth)/welcome">
         <View
           style={{
-            backgroundColor: colors.primary,
-            borderRadius: 12,
+            backgroundColor: colors.secondary,
+            borderRadius: 14,
             paddingVertical: spacing.md + 2,
             paddingHorizontal: spacing.xl,
           }}
@@ -56,7 +68,7 @@ export default function NotFoundScreen() {
               color: '#FFFFFF',
             }}
           >
-            Go to Home
+            Go to Welcome
           </Text>
         </View>
       </Link>

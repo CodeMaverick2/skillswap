@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
+  TouchableOpacity,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -108,6 +109,10 @@ export default function Step1ProfileScreen() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [bioFocused, setBioFocused] = useState(false)
   const [timezoneFocused, setTimezoneFocused] = useState(false)
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(auth)/welcome')
+  }
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {}
@@ -158,6 +163,29 @@ export default function Step1ProfileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <View style={{ marginBottom: spacing.base }}>
+            <TouchableOpacity onPress={goBackSafe} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+              <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{
+            backgroundColor: colors.primary,
+            borderRadius: radius.xl,
+            paddingHorizontal: spacing.base,
+            paddingVertical: spacing.base,
+            marginBottom: spacing.lg,
+            borderWidth: 1,
+            borderColor: `${colors.primaryLight}88`,
+          }}>
+            <Text style={{ fontFamily: 'Inter_800ExtraBold', fontSize: 24, color: '#fff' }}>
+              Build your identity
+            </Text>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: '#E9EDFF', marginTop: 2 }}>
+              Step 1 of 3 · This profile powers better matches
+            </Text>
+          </View>
+
           {/* Step progress */}
           <StepProgress current={1} total={3} />
 
