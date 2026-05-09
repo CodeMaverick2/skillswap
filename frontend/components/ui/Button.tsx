@@ -127,6 +127,9 @@ export function Button({
     }
   }
 
+  const isPrimary = variant === 'primary' && !disabled
+  const isSecondary = variant === 'secondary' && !disabled
+
   return (
     <AnimatedTouchable
       onPress={handlePress}
@@ -140,13 +143,18 @@ export function Button({
           borderWidth:
             variant === 'outline' || variant === 'ghost' ? 1.5 : 0,
           borderColor: getBorderColor(),
-          borderRadius: radius.md,
+          borderRadius: radius.lg,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
           alignSelf: fullWidth ? 'stretch' : 'flex-start',
           ...getPadding(),
           opacity: disabled ? 0.6 : 1,
+          shadowColor: isPrimary ? colors.primary : isSecondary ? colors.secondary : 'transparent',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: isPrimary || isSecondary ? 0.24 : 0,
+          shadowRadius: 14,
+          elevation: isPrimary || isSecondary ? 6 : 0,
         },
         style,
       ]}
