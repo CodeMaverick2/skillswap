@@ -146,18 +146,17 @@ function CustomTabBar({ state, navigation }: any) {
   return (
     <View
       style={{
-        backgroundColor: colors.tabBar,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
+        backgroundColor: `${colors.tabBar}F2`,
+        borderTopWidth: 1.5,
+        borderTopColor: `${colors.primary}20`,
         paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0),
-        paddingTop: 6,
+        paddingTop: 8,
         paddingHorizontal: spacing.sm,
-        // Subtle shadow upward
-        shadowColor: '#000',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-        elevation: 12,
+        shadowOpacity: 0.18,
+        shadowRadius: 14,
+        elevation: 18,
       }}
     >
       <View style={{ flexDirection: 'row' }}>
@@ -192,8 +191,6 @@ function CustomTabBar({ state, navigation }: any) {
 }
 
 export default function TabsLayout() {
-  const { colors } = useTheme()
-
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
