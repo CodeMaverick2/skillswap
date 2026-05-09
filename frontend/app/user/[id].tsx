@@ -50,6 +50,10 @@ export default function UserProfileScreen() {
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const goBackSafe = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(tabs)/discover')
+  }
 
   useEffect(() => {
     const fetch = async () => {
@@ -78,7 +82,7 @@ export default function UserProfileScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 40, marginBottom: spacing.md }}>😕</Text>
         <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 18, color: colors.textPrimary }}>{error || 'User not found'}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: spacing.xl }}>
+        <TouchableOpacity onPress={goBackSafe} style={{ marginTop: spacing.xl }}>
           <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.primary }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -95,14 +99,26 @@ export default function UserProfileScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
       <View style={{
-        flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: spacing.base, paddingVertical: spacing.md,
-        borderBottomWidth: 1, borderBottomColor: colors.border,
       }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
-          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 17, color: colors.textPrimary }}>Profile</Text>
+        <View style={{
+          backgroundColor: colors.primary,
+          borderRadius: radius.xl,
+          paddingHorizontal: spacing.base,
+          paddingVertical: spacing.base,
+          borderWidth: 1,
+          borderColor: `${colors.primaryLight}88`,
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}>
+          <TouchableOpacity onPress={goBackSafe} style={{ marginRight: spacing.md, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' }}>
+            <Ionicons name="arrow-back" size={20} color="#fff" />
+          </TouchableOpacity>
+          <View>
+            <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 19, color: '#fff' }}>Public Profile</Text>
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: '#E9EDFF' }}>Skill credibility and exchange fit</Text>
+          </View>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: spacing['3xl'] }}>
