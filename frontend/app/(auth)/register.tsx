@@ -83,6 +83,10 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading,         setLoading]         = useState(false)
   const [errors,          setErrors]          = useState<FormErrors>({})
+  const handleBack = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(auth)/welcome')
+  }
 
   const clearField = (k: string) => setErrors(p => ({ ...p, [k]: undefined, general: undefined }))
 
@@ -137,7 +141,7 @@ export default function RegisterScreen() {
         >
           {/* Back button */}
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={handleBack}
             style={{
               marginTop: spacing.base, marginBottom: spacing.xl, alignSelf: 'flex-start',
               padding: spacing.sm, backgroundColor: colors.surfaceAlt, borderRadius: radius.sm,
