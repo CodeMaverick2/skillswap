@@ -24,6 +24,10 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [errors, setErrors]     = useState<{ email?: string; password?: string; general?: string }>({})
+  const handleBack = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(auth)/welcome')
+  }
 
   const clearField = (k: string) => setErrors(p => ({ ...p, [k]: undefined, general: undefined }))
 
@@ -60,7 +64,7 @@ export default function LoginScreen() {
         >
           {/* Back button */}
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={handleBack}
             style={{
               marginTop: spacing.base, marginBottom: spacing.xl, alignSelf: 'flex-start',
               padding: spacing.sm, backgroundColor: colors.surfaceAlt, borderRadius: radius.sm,
