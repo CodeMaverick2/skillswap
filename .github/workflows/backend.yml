@@ -1,6 +1,7 @@
 name: Backend CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, develop]
     paths:
@@ -12,6 +13,13 @@ on:
       - 'backend/**'
       - '.github/workflows/backend.yml'
 
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 defaults:
   run:
     working-directory: backend
@@ -21,6 +29,7 @@ jobs:
   test:
     name: Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       matrix:
@@ -52,6 +61,7 @@ jobs:
     name: Coverage Report
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -86,6 +96,7 @@ jobs:
     name: Server Startup & Smoke Test
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 15
 
     services:
       mongodb:
