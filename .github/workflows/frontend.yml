@@ -1,6 +1,7 @@
 name: Frontend CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, develop]
     paths:
@@ -12,15 +13,43 @@ on:
       - 'frontend/**'
       - '.github/workflows/frontend.yml'
 
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 defaults:
   run:
     working-directory: frontend
 
 jobs:
+  lint:
+    name: ESLint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint (warnings budget enforced)
+        run: npm run lint -- --max-warnings=60
+
   # ── 1. TypeScript type check ────────────────────────────────────────────────
   typecheck:
     name: TypeScript Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +74,7 @@ jobs:
   build:
     name: Expo Web Export (Bundle Check)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -84,6 +114,7 @@ jobs:
   metro-start:
     name: Metro Dev Server Startup
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -136,6 +167,7 @@ jobs:
   expo-doctor:
     name: Expo Doctor
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
