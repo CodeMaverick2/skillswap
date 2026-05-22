@@ -8,7 +8,7 @@ A skill-barter mobile app — teach what you know, learn what you don't. Users l
 
 | Layer | Tech |
 |---|---|
-| Mobile | React Native + Expo (SDK 52) |
+| Mobile | React Native + Expo (SDK 54) |
 | Navigation | Expo Router (file-based) |
 | State | Zustand |
 | Backend | Node.js + Express |
@@ -137,6 +137,18 @@ npx expo start --tunnel # Tunnel via ngrok (works across networks)
 
 Scan the QR code with **Expo Go** on your phone.
 
+For a no-manual-networking setup (auto backend URL + Expo tunnel), run from repo root:
+
+```bash
+node scripts/dev-mobile.js
+```
+
+This command:
+- starts backend (`npm run dev`)
+- opens a public backend tunnel
+- writes `frontend/.env` automatically with tunnel URLs
+- starts Expo with `--tunnel -c`
+
 ---
 
 ## Running Tests
@@ -145,9 +157,22 @@ Scan the QR code with **Expo Go** on your phone.
 cd backend
 npm test                 # run all 93 tests
 npm run test:coverage    # with coverage report
+npm run seed             # reset demo graph and seeded personas
+npm run smoke            # API smoke flow with seeded QA account
 ```
 
 Tests use an in-memory MongoDB — no Atlas connection needed.
+
+---
+
+## V2 QA Checklist
+
+- Auth: register, login, refresh, logout, relaunch restore session.
+- Discover: suggested/sent/incoming/matched states are all visible and understandable.
+- Messaging: conversation list and thread open quickly; realtime reconnect state shown.
+- Sessions: upcoming and past split is correct; confirm/cancel flow works from both participants.
+- Profile: update profile + update skills path works and returns to expected screen.
+- Network: test poor connectivity and confirm banner + retries on read endpoints.
 
 ---
 
@@ -167,6 +192,15 @@ Tests use an in-memory MongoDB — no Atlas connection needed.
 | GET | `/api/users/:id` | ✓ | Public profile |
 | GET | `/api/users/check-username/:u` | ✓ | Username availability |
 | DELETE | `/api/users/me` | ✓ | Deactivate account |
+| GET | `/api/activity/feed` | ✓ | Activity feed (social layer) |
+| GET | `/api/goals` | ✓ | List learning goals |
+| POST | `/api/goals` | ✓ | Create learning goal |
+| PUT | `/api/goals/:id` | ✓ | Update learning goal |
+| DELETE | `/api/goals/:id` | ✓ | Delete learning goal |
+| GET | `/api/referrals/me` | ✓ | Referral code + referred users |
+| GET | `/api/sessions/slots?matchId=&from=&to=` | ✓ | Availability-aware slot suggestions |
+| PUT | `/api/sessions/:id/notes` | ✓ | Save participant private notes |
+| PUT | `/api/sessions/:id/feedback` | ✓ | Submit post-session feedback |
 
 ---
 
@@ -201,10 +235,21 @@ GitHub Actions runs on every push to `main` or `develop`:
 - Smoke tests against a real MongoDB service container (health, register, login, auth)
 
 **Frontend** (`.github/workflows/frontend.yml`)
+- ESLint (`expo lint`)
 - TypeScript check (`tsc --noEmit`)
 - Full Metro bundle export (`expo export --platform web`)
 - Metro dev server startup check
 - Expo Doctor (SDK compatibility)
+
+Both backend and frontend workflows include manual `workflow_dispatch`, concurrency guards, and timeouts.
+
+---
+
+## Demo Users
+
+For client/investor demos with India-focused personas and a single all-in-one walkthrough account, see:
+
+- `DEMO_USERS.md`
 
 ---
 
