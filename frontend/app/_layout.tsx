@@ -57,7 +57,10 @@ function AuthGate() {
         router.replace('/(auth)/welcome')
       }
     } else {
-      const inOnboarding = segments[0] === '(auth)' && segments[1] === 'onboarding'
+      const inOnboarding =
+        segments[0] === '(auth)' &&
+        segments.length > 1 &&
+        segments[1] === 'onboarding'
       if (!user.onboardingCompleted) {
         if (!inOnboarding) {
           router.replace('/(auth)/onboarding/step1-profile')
