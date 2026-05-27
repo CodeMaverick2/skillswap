@@ -50,7 +50,8 @@ function AuthGate() {
 
   useEffect(() => {
     if (isLoading) return
-    const inAuthGroup = segments[0] === '(auth)'
+    const routeSegments = segments as string[]
+    const inAuthGroup = routeSegments[0] === '(auth)'
 
     if (!user) {
       if (!inAuthGroup) {
@@ -58,9 +59,7 @@ function AuthGate() {
       }
     } else {
       const inOnboarding =
-        segments[0] === '(auth)' &&
-        segments.length > 1 &&
-        segments[1] === 'onboarding'
+        routeSegments[0] === '(auth)' && routeSegments[1] === 'onboarding'
       if (!user.onboardingCompleted) {
         if (!inOnboarding) {
           router.replace('/(auth)/onboarding/step1-profile')
