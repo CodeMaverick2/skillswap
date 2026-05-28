@@ -11,3 +11,4 @@ PLAN.md
 memory/
 backend/test-api.js
 PROJECT_PROGRESS_REPORT.*
+scripts/generate-progress-pdf.py
