@@ -1,4 +1,4 @@
-import React, { useState, forwardRef } from 'react'
+import React, { useState, useRef, useImperativeHandle, forwardRef } from 'react'
 import {
   View,
   TextInput,
@@ -38,8 +38,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   ref
 ) {
   const { colors } = useTheme()
+  const internalRef = useRef<TextInput>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [isFocused,    setIsFocused]    = useState(false)
+
+  useImperativeHandle(ref, () => internalRef.current as TextInput)
 
   const borderColor = error
     ? colors.error
@@ -60,7 +63,9 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         </Text>
       )}
 
-      <View style={{
+      <View
+        onTouchEnd={() => internalRef.current?.focus()}
+        style={{
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: colors.surfaceAlt,
@@ -74,7 +79,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         shadowOpacity: isFocused ? 0.16 : 0,
         shadowRadius: 10,
         elevation: isFocused ? 3 : 0,
-      }}>
+      }}
+      >
         {leftIcon && (
           <Ionicons
             name={leftIcon}
@@ -85,7 +91,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         )}
 
         <TextInput
-          ref={ref}
+          ref={internalRef}
           {...props}
           style={[{
             flex: 1,

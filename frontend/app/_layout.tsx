@@ -64,7 +64,7 @@ function AuthGate() {
         if (!inOnboarding) {
           router.replace('/(auth)/onboarding/step1-profile')
         }
-      } else if (inAuthGroup) {
+      } else if (inAuthGroup && !inOnboarding) {
         router.replace('/(tabs)/discover')
       }
     }
