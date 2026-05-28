@@ -147,7 +147,7 @@ This command:
 - starts backend (`npm run dev`)
 - opens a public backend tunnel
 - writes `frontend/.env` automatically with tunnel URLs
-- starts Expo with `--tunnel -c`
+- starts Expo (tries tunnel first, falls back to LAN if tunnel is unavailable)
 
 ---
 
@@ -173,6 +173,8 @@ Tests use an in-memory MongoDB — no Atlas connection needed.
 - Sessions: upcoming and past split is correct; confirm/cancel flow works from both participants.
 - Profile: update profile + update skills path works and returns to expected screen.
 - Network: test poor connectivity and confirm banner + retries on read endpoints.
+- Update-skills edit flow: from Profile -> Update Skills should remain in onboarding edit route and return to Profile after save.
+- Login UX: tapping email/password fields in Expo Go consistently opens keyboard.
 
 ---
 
@@ -242,6 +244,23 @@ GitHub Actions runs on every push to `main` or `develop`:
 - Expo Doctor (SDK compatibility)
 
 Both backend and frontend workflows include manual `workflow_dispatch`, concurrency guards, and timeouts.
+
+> Note: GitHub Actions currently shows a Node 20 deprecation warning for some upstream actions. CI is passing, but workflow action/runtime versions should be bumped in a follow-up maintenance PR.
+
+---
+
+## Latest Fixes (May 2026)
+
+- CI stabilization:
+  - Fixed strict TypeScript route-segment typing in root auth gate.
+  - Aligned Expo SDK-compatible dependency versions (`expo-network`, `eslint-config-expo`, Expo patch packages).
+  - Added standard `frontend/metro.config.js` extending `expo/metro-config`.
+- Auth/navigation flow:
+  - Fixed authenticated `Profile -> Update Skills` edit-mode redirect (no longer jumps to Discover/home).
+- Expo Go input reliability:
+  - Improved login input focus behavior so tap reliably opens keyboard.
+- Git hygiene:
+  - Added ignore rules for local progress-report artifacts and local PDF generation helper script.
 
 ---
 
