@@ -3,7 +3,12 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
+const User = require('../models/User');
 const { logger } = require('../utils/logger');
+const { notifyNewMessage } = require('../services/notification.service');
+const { trackFirstMessageIfNeeded } = require('../services/analytics.service');
+const { isBlockedEitherWay } = require('../services/trust.service');
+const { markReplied } = require('../services/matching-feedback.service');
 
 function initSocket(server) {
   const io = new Server(server, {
@@ -78,16 +83,21 @@ function initSocket(server) {
           return;
         }
 
+        const otherId = conversation.participants.find(
+          p => p.toString() !== userId
+        );
+
+        if (otherId && await isBlockedEitherWay(userId, otherId)) {
+          if (callback) callback({ success: false, error: 'Cannot message this user' });
+          return;
+        }
+
         const message = await Message.create({
           conversationId,
           senderId: userId,
           text: text.trim(),
           readBy: [userId],
         });
-
-        const otherId = conversation.participants.find(
-          p => p.toString() !== userId
-        );
 
         const currentUnread = conversation.unreadCount?.get?.(otherId.toString())
           || conversation.unreadCount?.[otherId.toString()] || 0;
@@ -111,6 +121,14 @@ function initSocket(server) {
           senderId: userId,
           text: text.trim(),
         });
+
+        trackFirstMessageIfNeeded(userId, conversationId).catch(() => {});
+        if (conversation.matchId && otherId) {
+          markReplied(conversation.matchId, userId, otherId).catch(() => {});
+        }
+        const sender = await User.findById(userId).select('username profile').lean();
+        const fromName = sender?.profile?.firstName || sender?.username || 'New message';
+        notifyNewMessage(otherId, fromName, text.trim(), conversationId).catch(() => {});
 
         if (callback) callback({ success: true, message });
       } catch (err) {

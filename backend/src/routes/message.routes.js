@@ -1,10 +1,15 @@
 const express = require('express');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const User = require('../models/User');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId } = require('../utils/validate');
 const { logActivity } = require('../services/activity.service');
+const { notifyNewMessage } = require('../services/notification.service');
+const { trackFirstMessageIfNeeded } = require('../services/analytics.service');
+const { isBlockedEitherWay } = require('../services/trust.service');
+const { markReplied } = require('../services/matching-feedback.service');
 
 const router = express.Router();
 
@@ -99,6 +104,14 @@ router.post('/:conversationId', protect, async (req, res) => {
     return res.status(404).json(errorResponse('Conversation not found'));
   }
 
+  const otherId = conversation.participants.find(
+    p => p.toString() !== req.user._id.toString()
+  );
+
+  if (otherId && await isBlockedEitherWay(req.user._id, otherId)) {
+    return res.status(403).json(errorResponse('Cannot message this user'));
+  }
+
   const message = await Message.create({
     conversationId,
     senderId: req.user._id,
@@ -107,10 +120,6 @@ router.post('/:conversationId', protect, async (req, res) => {
   });
 
   // Update conversation's last message and increment unread for the other user
-  const otherId = conversation.participants.find(
-    p => p.toString() !== req.user._id.toString()
-  );
-
   const currentUnread = conversation.unreadCount?.get?.(otherId.toString())
     || conversation.unreadCount?.[otherId.toString()] || 0;
 
@@ -131,6 +140,13 @@ router.post('/:conversationId', protect, async (req, res) => {
     metadata: { conversationId, messageId: message._id },
     visibility: 'private',
   });
+  trackFirstMessageIfNeeded(req.user._id, conversationId).catch(() => {});
+  if (conversation.matchId && otherId) {
+    markReplied(conversation.matchId, req.user._id, otherId).catch(() => {});
+  }
+  const sender = await User.findById(req.user._id).select('username profile').lean();
+  const fromName = sender?.profile?.firstName || sender?.username || 'New message';
+  notifyNewMessage(otherId, fromName, text.trim(), conversationId).catch(() => {});
 
   res.status(201).json(successResponse(message, 'Message sent'));
 });

@@ -3,6 +3,11 @@ const Match = require('../models/Match');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const { logActivity } = require('../services/activity.service');
+const { notifyMatchRequest, notifyMatchAccepted } = require('../services/notification.service');
+const { trackEvent } = require('../services/analytics.service');
+const { isBlockedEitherWay } = require('../services/trust.service');
+const { submitQuality, ensureOutcome } = require('../services/matching-feedback.service');
+const User = require('../models/User');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId } = require('../utils/validate');
@@ -20,6 +25,10 @@ router.post('/connect/:userId', protect, async (req, res) => {
 
   if (me.toString() === other) {
     return res.status(400).json(errorResponse('Cannot connect with yourself'));
+  }
+
+  if (await isBlockedEitherWay(me, other)) {
+    return res.status(403).json(errorResponse('Cannot connect with this user'));
   }
 
   // Atomic upsert-style check to prevent race conditions on duplicate requests
@@ -45,6 +54,10 @@ router.post('/connect/:userId', protect, async (req, res) => {
     description: 'Waiting for the other user to accept your match request.',
     metadata: { matchId: match._id },
   });
+  await trackEvent(me, 'match_request_sent', { matchId: match._id, to: other });
+  const fromUser = await User.findById(me).select('username profile').lean();
+  const fromName = fromUser?.profile?.firstName || fromUser?.username || 'Someone';
+  notifyMatchRequest(other, fromName).catch(() => {});
 
   res.status(201).json(successResponse(match, 'Connection request sent'));
 });
@@ -108,6 +121,12 @@ router.put('/:matchId/accept', protect, async (req, res) => {
     description: 'You are now matched and can start chatting.',
     metadata: { matchId: match._id, conversationId: conversation._id },
   });
+  await trackEvent(req.user._id, 'match_request_accepted', { matchId: match._id });
+  await ensureOutcome(match._id, req.user._id, otherUserId);
+  await ensureOutcome(match._id, otherUserId, req.user._id);
+  const accepter = await User.findById(req.user._id).select('username profile').lean();
+  const name = accepter?.profile?.firstName || accepter?.username || 'Someone';
+  notifyMatchAccepted(otherUserId, name).catch(() => {});
 
   res.json(successResponse({ match, conversation }, 'Connection accepted'));
 });
@@ -164,6 +183,26 @@ router.get('/pending', protect, async (req, res) => {
     .lean();
 
   res.json(successResponse(pending, 'Pending requests'));
+});
+
+// PUT /api/matches/:matchId/quality — outcome feedback for matching loop
+router.put('/:matchId/quality', protect, async (req, res) => {
+  if (!isValidObjectId(req.params.matchId)) {
+    return res.status(400).json(errorResponse('Invalid match ID'));
+  }
+  const score = Number(req.body?.qualityScore);
+  if (!Number.isInteger(score) || score < 1 || score > 5) {
+    return res.status(400).json(errorResponse('qualityScore must be 1-5'));
+  }
+  const match = await Match.findOne({
+    _id: req.params.matchId,
+    users: req.user._id,
+    status: 'accepted',
+  });
+  if (!match) return res.status(404).json(errorResponse('Match not found'));
+  const peerId = match.users.find((u) => u.toString() !== req.user._id.toString());
+  await submitQuality(match._id, req.user._id, peerId, score);
+  res.json(successResponse({ qualityScore: score }, 'Match quality recorded'));
 });
 
 module.exports = router;
