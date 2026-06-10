@@ -127,6 +127,12 @@ const register = async (req, res) => {
   await saveRefreshToken(user._id, refreshToken);
 
   logger.info(`New user registered: ${user.username} (${user.email})`);
+  try {
+    const { trackEvent } = require('../services/analytics.service');
+    await trackEvent(user._id, 'register_success', {});
+  } catch {
+    // non-blocking
+  }
 
   return res.status(201).json(
     successResponse({ user: sanitizeUser(user), accessToken, refreshToken }, 'Account created')

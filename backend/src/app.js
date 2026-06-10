@@ -17,6 +17,8 @@ const sessionRoutes  = require('./routes/session.routes');
 const activityRoutes = require('./routes/activity.routes');
 const goalRoutes     = require('./routes/goal.routes');
 const referralRoutes = require('./routes/referral.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
+const moderationRoutes = require('./routes/moderation.routes');
 
 const app = express();
 
@@ -101,6 +103,8 @@ app.use('/api/sessions', apiLimiter,  sessionRoutes);
 app.use('/api/activity', apiLimiter,  activityRoutes);
 app.use('/api/goals',    apiLimiter,  goalRoutes);
 app.use('/api/referrals', apiLimiter, referralRoutes);
+app.use('/api/analytics', apiLimiter, analyticsRoutes);
+app.use('/api/moderation', apiLimiter, moderationRoutes);
 
 // ── 404 ────────────────────────────────────────────────────────────────────
 app.use((req, res) => {

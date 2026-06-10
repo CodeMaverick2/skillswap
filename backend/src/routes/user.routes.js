@@ -78,11 +78,21 @@ router.put('/me', protect, async (req, res) => {
     return res.status(400).json(errorResponse('No fields to update'));
   }
 
+  const wasOnboarded = req.user.onboardingCompleted;
   const updated = await User.findByIdAndUpdate(
     req.user._id,
     { $set: updates },
     { new: true, runValidators: true }
   ).select('-passwordHash -expoPushToken').lean();
+
+  if (!wasOnboarded && value.onboardingCompleted === true) {
+    try {
+      const { trackEvent } = require('../services/analytics.service');
+      await trackEvent(req.user._id, 'onboarding_completed', {});
+    } catch {
+      // non-blocking
+    }
+  }
 
   res.json(successResponse(updated, 'Profile updated'));
 });
