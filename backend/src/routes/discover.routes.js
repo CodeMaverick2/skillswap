@@ -5,6 +5,7 @@ const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId, escapeRegex } = require('../utils/validate');
 const { scoreUserForDiscover } = require('../services/recommendation.service');
+const { getBlockedUserIds, getPeerOutcomeBoost } = require('../services/trust.service');
 
 const router = express.Router();
 
@@ -31,11 +32,13 @@ router.get('/', protect, async (req, res) => {
 
   // Limit skippedUsers to last 500 to prevent unbounded growth in queries
   const recentSkipped = (me.skippedUsers || []).slice(-500);
+  const blockedIds = await getBlockedUserIds(me._id);
 
   const excludeIds = [
     me._id,
     ...recentSkipped,
     ...matchedUserIds,
+    ...blockedIds,
   ];
 
   // Build skill name lists, filter out null/undefined/empty and escape regex
@@ -83,7 +86,12 @@ router.get('/', protect, async (req, res) => {
     User.countDocuments(query),
   ]);
 
-  const usersWithScore = users.map((user) => scoreUserForDiscover(me, user));
+  const usersWithScore = await Promise.all(
+    users.map(async (user) => {
+      const outcomeBoost = await getPeerOutcomeBoost(user._id);
+      return scoreUserForDiscover(me, user, { outcomeBoost });
+    })
+  );
 
   usersWithScore.sort((a, b) => b.matchScore - a.matchScore);
 

@@ -1,4 +1,4 @@
-function scoreUserForDiscover(me, user) {
+function scoreUserForDiscover(me, user, extras = {}) {
   let score = 0;
   const sharedSkills = [];
   const scoreBreakdown = {
@@ -8,8 +8,15 @@ function scoreUserForDiscover(me, user) {
     sharedDepth: 0,
     reliability: 0,
     recency: 0,
+    outcomeBoost: 0,
     intent: 'practice_buddy',
   };
+
+  // Deprioritize sparse / low-effort profiles
+  const teachCount = (user.teachSkills || []).length;
+  const learnCount = (user.learnSkills || []).length;
+  if (teachCount === 0) score -= 25;
+  if (teachCount + learnCount <= 1) score -= 10;
 
   for (const myLearn of me.learnSkills || []) {
     if (!myLearn.skillName) continue;
@@ -58,6 +65,12 @@ function scoreUserForDiscover(me, user) {
     if (hoursAgo <= 24) score += 6;
     else if (hoursAgo <= 72) score += 3;
     scoreBreakdown.recency = hoursAgo <= 24 ? 6 : hoursAgo <= 72 ? 3 : 0;
+  }
+
+  const outcomeBoost = Number(extras.outcomeBoost) || 0;
+  if (outcomeBoost) {
+    score += outcomeBoost;
+    scoreBreakdown.outcomeBoost = outcomeBoost;
   }
 
   scoreBreakdown.intent = scoreBreakdown.mutualBonus > 0 ? 'long_term_mentorship' : scoreBreakdown.theyTeach >= 30 ? 'quick_lesson' : 'practice_buddy';
