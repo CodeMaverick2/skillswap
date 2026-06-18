@@ -2,9 +2,17 @@ const express = require('express');
 const Joi = require('joi');
 const Session = require('../models/Session');
 const Match = require('../models/Match');
+const SessionTemplate = require('../models/SessionTemplate');
 const { logActivity } = require('../services/activity.service');
 const { hasConflict, getSuggestedSlots } = require('../services/availability.service');
+const { notifySessionEvent } = require('../services/notification.service');
+const { trackEvent } = require('../services/analytics.service');
+const {
+  markSessionScheduled,
+  markSessionCompleted,
+} = require('../services/matching-feedback.service');
 const User = require('../models/User');
+const LearningGoal = require('../models/LearningGoal');
 const protect = require('../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { isValidObjectId } = require('../utils/validate');
@@ -18,12 +26,103 @@ const createSessionSchema = Joi.object({
   topic: Joi.string().trim().max(200).required(),
   notes: Joi.string().trim().max(500).allow(''),
   meetingLink: Joi.string().uri().max(500).allow(''),
+  templateId: Joi.string().optional(),
 });
 
 const feedbackSchema = Joi.object({
   score: Joi.number().integer().min(1).max(5).required(),
   comment: Joi.string().trim().max(300).allow(''),
   nextSteps: Joi.string().trim().max(500).allow(''),
+});
+
+const rescheduleSchema = Joi.object({
+  scheduledAt: Joi.date().iso().greater('now').required(),
+  duration: Joi.number().integer().min(15).max(180).optional(),
+  reason: Joi.string().trim().max(200).allow(''),
+});
+
+function toIcsDate(date) {
+  return new Date(date).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function buildIcs(session) {
+  const start = new Date(session.scheduledAt);
+  const end = new Date(start.getTime() + (session.duration || 60) * 60 * 1000);
+  const uid = `${session._id}@skillswap`;
+  const summary = (session.topic || 'SkillSwap session').replace(/\n/g, ' ');
+  const description = [
+    session.notes || '',
+    session.meetingLink ? `Meeting: ${session.meetingLink}` : '',
+  ].filter(Boolean).join('\\n');
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SkillSwap//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${toIcsDate(new Date())}`,
+    `DTSTART:${toIcsDate(start)}`,
+    `DTEND:${toIcsDate(end)}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
+    session.meetingLink ? `URL:${session.meetingLink}` : '',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+}
+
+const DEFAULT_TEMPLATES = [
+  {
+    name: 'Quick skill intro',
+    skillHint: 'any',
+    defaultDuration: 30,
+    topicPrefix: 'Intro session',
+    checklist: [
+      { text: 'Share goals for this skill' },
+      { text: 'Demo one core concept' },
+      { text: 'Agree on homework' },
+    ],
+  },
+  {
+    name: 'Deep practice',
+    skillHint: 'any',
+    defaultDuration: 60,
+    topicPrefix: 'Practice session',
+    checklist: [
+      { text: 'Warm-up review of last session' },
+      { text: 'Work through one real problem together' },
+      { text: 'Capture notes and next steps' },
+    ],
+  },
+  {
+    name: 'Portfolio review',
+    skillHint: 'design',
+    defaultDuration: 45,
+    topicPrefix: 'Portfolio critique',
+    checklist: [
+      { text: 'Walk through 2-3 pieces' },
+      { text: 'Give specific feedback' },
+      { text: 'Pick one item to improve this week' },
+    ],
+  },
+];
+
+async function ensureSystemTemplates() {
+  const count = await SessionTemplate.countDocuments({ isSystem: true });
+  if (count === 0) {
+    await SessionTemplate.insertMany(DEFAULT_TEMPLATES.map((t) => ({ ...t, isSystem: true })));
+  }
+}
+
+// GET /api/sessions/templates — system + user templates
+router.get('/templates', protect, async (req, res) => {
+  await ensureSystemTemplates();
+  const templates = await SessionTemplate.find({
+    $or: [{ isSystem: true }, { createdBy: req.user._id }],
+  }).sort({ isSystem: -1, name: 1 }).lean();
+  res.json(successResponse(templates, 'Templates fetched'));
 });
 
 // POST /api/sessions — create a session
@@ -47,6 +146,19 @@ router.post('/', protect, async (req, res) => {
   if (conflict) {
     return res.status(409).json(errorResponse('Selected time conflicts with another scheduled session'));
   }
+
+  let checklist = [];
+  let templateId;
+  if (value.templateId && isValidObjectId(value.templateId)) {
+    const template = await SessionTemplate.findById(value.templateId).lean();
+    if (template) {
+      templateId = template._id;
+      checklist = (template.checklist || []).map((c) => ({ text: c.text, done: false }));
+      if (!value.topic && template.topicPrefix) value.topic = template.topicPrefix;
+      if (!value.duration && template.defaultDuration) value.duration = template.defaultDuration;
+    }
+  }
+
   const session = await Session.create({
     matchId: match._id,
     participants: match.users,
@@ -57,6 +169,8 @@ router.post('/', protect, async (req, res) => {
     meetingLink: value.meetingLink || 'https://meet.google.com/new',
     createdBy: req.user._id,
     status: 'pending',
+    templateId,
+    checklist,
   });
   const otherUserId = match.users.find((u) => u.toString() !== req.user._id.toString());
   await logActivity({
@@ -67,6 +181,14 @@ router.post('/', protect, async (req, res) => {
     description: value.topic,
     metadata: { sessionId: session._id, matchId: match._id, scheduledAt: session.scheduledAt },
   });
+  await trackEvent(req.user._id, 'session_created', { sessionId: session._id });
+  await markSessionScheduled(match._id, match.users);
+  notifySessionEvent(
+    otherUserId,
+    'New session request',
+    value.topic,
+    session._id
+  ).catch(() => {});
 
   res.status(201).json(successResponse(session, 'Session created'));
 });
@@ -104,12 +226,27 @@ router.get('/', protect, async (req, res) => {
     .sort({ scheduledAt: 1 })
     .lean();
 
-  // Split into upcoming and past
   const now = new Date();
   const upcoming = sessions.filter(s => new Date(s.scheduledAt) >= now && s.status !== 'cancelled' && s.status !== 'completed');
   const past = sessions.filter(s => new Date(s.scheduledAt) < now || s.status === 'completed' || s.status === 'cancelled');
 
   res.json(successResponse({ upcoming, past }, 'Sessions fetched'));
+});
+
+// GET /api/sessions/:id/calendar.ics — calendar export
+router.get('/:id/calendar.ics', protect, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json(errorResponse('Invalid session ID'));
+  }
+  const session = await Session.findOne({
+    _id: req.params.id,
+    participants: req.user._id,
+  }).lean();
+  if (!session) return res.status(404).json(errorResponse('Session not found'));
+  const ics = buildIcs(session);
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="skillswap-${session._id}.ics"`);
+  res.send(ics);
 });
 
 // GET /api/sessions/:id — get single session
@@ -128,7 +265,7 @@ router.get('/:id', protect, async (req, res) => {
   res.json(successResponse(session, 'Session fetched'));
 });
 
-// PUT /api/sessions/:id/confirm — confirm a session (only the OTHER participant, not the creator)
+// PUT /api/sessions/:id/confirm
 router.put('/:id/confirm', protect, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json(errorResponse('Invalid session ID'));
@@ -143,18 +280,76 @@ router.put('/:id/confirm', protect, async (req, res) => {
   if (session.status !== 'pending') {
     return res.status(400).json(errorResponse(`Session is already ${session.status}`));
   }
-  // Prevent creator from confirming their own request
   if (session.createdBy.toString() === req.user._id.toString()) {
     return res.status(403).json(errorResponse('Cannot confirm your own session request'));
   }
 
   session.status = 'confirmed';
   await session.save();
+  const otherUserId = session.participants.find((u) => u.toString() !== req.user._id.toString());
+  notifySessionEvent(otherUserId, 'Session confirmed', session.topic, session._id).catch(() => {});
 
   res.json(successResponse(session, 'Session confirmed'));
 });
 
-// PUT /api/sessions/:id/complete — complete a session
+// PUT /api/sessions/:id/reschedule
+router.put('/:id/reschedule', protect, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json(errorResponse('Invalid session ID'));
+  }
+  const { error, value } = rescheduleSchema.validate(req.body, { stripUnknown: true });
+  if (error) {
+    return res.status(400).json(errorResponse('Validation failed', error.details.map((e) => e.message)));
+  }
+  const session = await Session.findOne({
+    _id: req.params.id,
+    participants: req.user._id,
+  });
+  if (!session) return res.status(404).json(errorResponse('Session not found'));
+  if (['completed', 'cancelled'].includes(session.status)) {
+    return res.status(400).json(errorResponse(`Cannot reschedule a ${session.status} session`));
+  }
+  const duration = value.duration || session.duration;
+  const conflict = await hasConflict(session.participants, value.scheduledAt, duration, session._id);
+  if (conflict) {
+    return res.status(409).json(errorResponse('Selected time conflicts with another scheduled session'));
+  }
+  session.rescheduleHistory.push({
+    previousScheduledAt: session.scheduledAt,
+    newScheduledAt: value.scheduledAt,
+    changedBy: req.user._id,
+    reason: value.reason || '',
+  });
+  session.scheduledAt = value.scheduledAt;
+  if (value.duration) session.duration = value.duration;
+  if (session.status === 'confirmed') session.status = 'pending';
+  await session.save();
+  const otherUserId = session.participants.find((u) => u.toString() !== req.user._id.toString());
+  notifySessionEvent(otherUserId, 'Session rescheduled', session.topic, session._id).catch(() => {});
+  res.json(successResponse(session, 'Session rescheduled'));
+});
+
+// PUT /api/sessions/:id/checklist
+router.put('/:id/checklist', protect, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json(errorResponse('Invalid session ID'));
+  }
+  const items = Array.isArray(req.body?.checklist) ? req.body.checklist : null;
+  if (!items) return res.status(400).json(errorResponse('checklist array required'));
+  const session = await Session.findOne({
+    _id: req.params.id,
+    participants: req.user._id,
+  });
+  if (!session) return res.status(404).json(errorResponse('Session not found'));
+  session.checklist = items.slice(0, 20).map((c) => ({
+    text: String(c.text || '').trim().slice(0, 140),
+    done: Boolean(c.done),
+  })).filter((c) => c.text);
+  await session.save();
+  res.json(successResponse(session, 'Checklist updated'));
+});
+
+// PUT /api/sessions/:id/complete
 router.put('/:id/complete', protect, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json(errorResponse('Invalid session ID'));
@@ -183,6 +378,12 @@ router.put('/:id/complete', protect, async (req, res) => {
         'reputation.totalSessions': totalSessions,
         'progress.badges': Array.from(badges),
       });
+      // bump weekly goal counters
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      await LearningGoal.updateMany(
+        { userId: pid, status: 'active', weekStartsAt: { $gte: weekAgo } },
+        { $inc: { weeklyCompletedSessions: 1 } }
+      );
     })
   );
   const otherUserId = session.participants.find((u) => u.toString() !== req.user._id.toString());
@@ -194,11 +395,14 @@ router.put('/:id/complete', protect, async (req, res) => {
     description: session.topic,
     metadata: { sessionId: session._id, matchId: session.matchId },
   });
+  await trackEvent(req.user._id, 'session_completed', { sessionId: session._id });
+  await markSessionCompleted(session.matchId);
+  notifySessionEvent(otherUserId, 'Session completed', session.topic, session._id).catch(() => {});
 
   res.json(successResponse(session, 'Session completed'));
 });
 
-// PUT /api/sessions/:id/cancel — cancel a session
+// PUT /api/sessions/:id/cancel
 router.put('/:id/cancel', protect, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json(errorResponse('Invalid session ID'));
@@ -215,11 +419,13 @@ router.put('/:id/cancel', protect, async (req, res) => {
 
   session.status = 'cancelled';
   await session.save();
+  const otherUserId = session.participants.find((u) => u.toString() !== req.user._id.toString());
+  notifySessionEvent(otherUserId, 'Session cancelled', session.topic, session._id).catch(() => {});
 
   res.json(successResponse(session, 'Session cancelled'));
 });
 
-// PUT /api/sessions/:id/notes — store private participant notes
+// PUT /api/sessions/:id/notes
 router.put('/:id/notes', protect, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json(errorResponse('Invalid session ID'));
@@ -235,7 +441,7 @@ router.put('/:id/notes', protect, async (req, res) => {
   res.json(successResponse(session, 'Session notes updated'));
 });
 
-// PUT /api/sessions/:id/feedback — post-session reflection and score
+// PUT /api/sessions/:id/feedback
 router.put('/:id/feedback', protect, async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json(errorResponse('Invalid session ID'));

@@ -41,6 +41,24 @@ const sessionSchema = new Schema(
       },
       default: {},
     },
+    templateId: { type: Schema.Types.ObjectId, ref: 'SessionTemplate' },
+    checklist: {
+      type: [{
+        text: { type: String, trim: true, maxlength: 140 },
+        done: { type: Boolean, default: false },
+      }],
+      default: [],
+    },
+    rescheduleHistory: {
+      type: [{
+        previousScheduledAt: Date,
+        newScheduledAt: Date,
+        changedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        changedAt: { type: Date, default: Date.now },
+        reason: { type: String, maxlength: 200 },
+      }],
+      default: [],
+    },
   },
   { timestamps: true }
 );
