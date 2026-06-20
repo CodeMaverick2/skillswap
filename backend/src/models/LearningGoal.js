@@ -21,6 +21,17 @@ const learningGoalSchema = new Schema(
       }],
       default: [],
     },
+    weeklyTargetSessions: { type: Number, min: 0, max: 14, default: 1 },
+    weeklyCompletedSessions: { type: Number, min: 0, max: 14, default: 0 },
+    weekStartsAt: { type: Date },
+    pathSteps: {
+      type: [{
+        title: { type: String, trim: true, maxlength: 140 },
+        done: { type: Boolean, default: false },
+        weekIndex: { type: Number, min: 1, max: 52 },
+      }],
+      default: [],
+    },
   },
   { timestamps: true }
 );
