@@ -116,6 +116,8 @@ export default function ConversationScreen() {
   const [scheduling, setScheduling] = useState(false)
   const [matchId, setMatchId] = useState<string | null>(null)
   const [suggestedSlots, setSuggestedSlots] = useState<string[]>([])
+  const [templates, setTemplates] = useState<any[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const introPrompts = [
     'Hi! Excited to connect - what do you want to learn first?',
     'Want to schedule a quick 30-minute intro session this week?',
@@ -284,6 +286,7 @@ export default function ConversationScreen() {
         duration: parseInt(sessionDuration) || 60,
         topic: sessionTopic.trim(),
         meetingLink: meetingLink.trim() || 'https://meet.google.com/new',
+        ...(selectedTemplateId ? { templateId: selectedTemplateId } : {}),
       })
       toast.success('Session scheduled!')
       setShowSchedule(false)
@@ -291,6 +294,7 @@ export default function ConversationScreen() {
       setSessionDate('')
       setSessionDuration('60')
       setMeetingLink('https://meet.google.com/new')
+      setSelectedTemplateId(null)
     } catch (err) {
       toast.error(getApiError(err))
     } finally {
@@ -386,8 +390,45 @@ export default function ConversationScreen() {
           backgroundColor: colors.surface, padding: spacing.base,
         }}>
           <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary, marginBottom: spacing.sm }}>
-            📅 Schedule a Session
+            Schedule a Session
           </Text>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const res = await api.get('/sessions/templates')
+                setTemplates(res.data.data || [])
+              } catch {
+                // ignore
+              }
+            }}
+            style={{ marginBottom: spacing.sm }}
+          >
+            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.primary }}>
+              {templates.length ? 'Templates loaded' : 'Load session templates'}
+            </Text>
+          </TouchableOpacity>
+          {templates.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+              {templates.map((t) => (
+                <TouchableOpacity
+                  key={t._id}
+                  onPress={() => {
+                    setSelectedTemplateId(t._id)
+                    if (t.topicPrefix) setSessionTopic(t.topicPrefix)
+                    if (t.defaultDuration) setSessionDuration(String(t.defaultDuration))
+                  }}
+                  style={{
+                    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+                    borderRadius: radius.full, borderWidth: 1,
+                    borderColor: selectedTemplateId === t._id ? colors.primary : colors.border,
+                    backgroundColor: selectedTemplateId === t._id ? `${colors.primary}15` : colors.surfaceAlt,
+                  }}
+                >
+                  <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.textPrimary }}>{t.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <TextInput
             value={sessionTopic}
             onChangeText={setSessionTopic}

@@ -217,6 +217,12 @@ export default function ProfileScreen() {
         skillId: skill.skillId,
         skillName: skill.skillName,
         title: `Reach level ${skill.targetLevel} in ${skill.skillName}`,
+        weeklyTargetSessions: 2,
+        pathSteps: [
+          { title: 'Week 1: fundamentals intro', weekIndex: 1, done: false },
+          { title: 'Week 2: guided practice', weekIndex: 2, done: false },
+          { title: 'Week 3: independent project', weekIndex: 3, done: false },
+        ],
         milestones: [
           { text: 'Complete first practice session', done: false },
           { text: 'Finish 3 focused sessions', done: false },
@@ -880,7 +886,15 @@ export default function ProfileScreen() {
               </Text>
               <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
                 {goal.skillName} · {goal.progress || 0}% · {goal.status}
+                {goal.weeklyTargetSessions != null
+                  ? ` · week ${goal.weeklyCompletedSessions || 0}/${goal.weeklyTargetSessions}`
+                  : ''}
               </Text>
+              {(goal.pathSteps?.length || 0) > 0 && (
+                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                  Path: {goal.pathSteps.filter((s: any) => s.done).length}/{goal.pathSteps.length} steps
+                </Text>
+              )}
             </View>
           )) : (
             <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.md }}>

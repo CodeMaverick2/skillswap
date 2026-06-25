@@ -37,7 +37,8 @@
           "image": "./assets/images/splash.png"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

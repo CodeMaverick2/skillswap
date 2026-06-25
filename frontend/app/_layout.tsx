@@ -19,6 +19,7 @@ import { authService } from '@/services/auth.service'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { NetworkBanner } from '@/components/ui/NetworkBanner'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { registerForPushNotifications, addNotificationResponseListener } from '@/services/push'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -47,6 +48,23 @@ function AuthGate() {
     }
     restoreSession()
   }, [])
+
+  useEffect(() => {
+    if (!user?.onboardingCompleted) return
+    registerForPushNotifications().catch(() => {})
+    const remove = addNotificationResponseListener((data) => {
+      if (data.screen === 'conversation' && data.conversationId) {
+        router.push(`/conversation/${data.conversationId}`)
+      } else if (data.screen === 'session' && data.sessionId) {
+        router.push(`/session/${data.sessionId}`)
+      } else if (data.screen === 'messages') {
+        router.push('/(tabs)/messages')
+      } else if (data.screen === 'discover') {
+        router.push('/(tabs)/discover')
+      }
+    })
+    return remove
+  }, [user?._id, user?.onboardingCompleted])
 
   useEffect(() => {
     if (isLoading) return

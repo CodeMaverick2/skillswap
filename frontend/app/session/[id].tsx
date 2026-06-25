@@ -39,17 +39,26 @@ export default function SessionDetailScreen() {
   const [feedbackScore, setFeedbackScore] = useState('5')
   const [feedbackComment, setFeedbackComment] = useState('')
   const [nextSteps, setNextSteps] = useState('')
+  const [rescheduleAt, setRescheduleAt] = useState('')
+  const [qualityScore, setQualityScore] = useState('4')
 
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        // Fetch all sessions and find the one we need
-        const res = await api.get('/sessions')
-        const all = [...(res.data.data?.upcoming || []), ...(res.data.data?.past || [])]
-        const found = all.find((s: any) => s._id === id)
+        const res = await api.get(`/sessions/${id}`)
+        const found = res.data.data
         setSession(found || null)
+        if (found?.participantNotes?.[user?._id || '']) {
+          setNote(found.participantNotes[user?._id || ''])
+        }
       } catch {
-        toast.error('Failed to load session')
+        try {
+          const res = await api.get('/sessions')
+          const all = [...(res.data.data?.upcoming || []), ...(res.data.data?.past || [])]
+          setSession(all.find((s: any) => s._id === id) || null)
+        } catch {
+          toast.error('Failed to load session')
+        }
       } finally {
         setLoading(false)
       }
@@ -106,6 +115,68 @@ export default function SessionDetailScreen() {
         nextSteps,
       })
       toast.success('Feedback submitted')
+    } catch (err) {
+      toast.error(getApiError(err))
+    }
+  }
+
+  const handleReschedule = async () => {
+    if (!rescheduleAt.trim()) {
+      toast.error('Enter new time (YYYY-MM-DD HH:mm)')
+      return
+    }
+    const parsed = new Date(rescheduleAt.trim())
+    if (isNaN(parsed.getTime()) || parsed <= new Date()) {
+      toast.error('Enter a valid future date')
+      return
+    }
+    setActionLoading(true)
+    try {
+      const res = await api.put(`/sessions/${id}/reschedule`, {
+        scheduledAt: parsed.toISOString(),
+        reason: 'Rescheduled from app',
+      })
+      setSession(res.data.data)
+      setRescheduleAt('')
+      toast.success('Session rescheduled')
+    } catch (err) {
+      toast.error(getApiError(err))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleExportCalendar = async () => {
+    try {
+      const res = await api.get(`/sessions/${id}/calendar.ics`, { responseType: 'text' })
+      const ics = typeof res.data === 'string' ? res.data : String(res.data)
+      const blobUrl = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`
+      await Linking.openURL(blobUrl)
+      toast.success('Calendar file ready')
+    } catch (err) {
+      toast.error(getApiError(err))
+    }
+  }
+
+  const toggleChecklistItem = async (index: number) => {
+    if (!session?.checklist) return
+    const next = session.checklist.map((c: any, i: number) =>
+      i === index ? { ...c, done: !c.done } : c
+    )
+    try {
+      const res = await api.put(`/sessions/${id}/checklist`, { checklist: next })
+      setSession(res.data.data)
+    } catch (err) {
+      toast.error(getApiError(err))
+    }
+  }
+
+  const handleMatchQuality = async () => {
+    const matchId = session?.matchId?._id || session?.matchId
+    if (!matchId) return
+    try {
+      await api.put(`/matches/${matchId}/quality`, { qualityScore: Number(qualityScore) || 4 })
+      toast.success('Match quality saved')
     } catch (err) {
       toast.error(getApiError(err))
     }
@@ -279,7 +350,72 @@ export default function SessionDetailScreen() {
               <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.error }}>Cancel Session</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            onPress={handleExportCalendar}
+            style={{
+              borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+              paddingVertical: spacing.md, alignItems: 'center', backgroundColor: colors.surface,
+            }}
+          >
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.textPrimary }}>Export to calendar (.ics)</Text>
+          </TouchableOpacity>
         </View>
+
+        {canCancel && (
+          <View style={{
+            backgroundColor: colors.surface, borderRadius: radius.lg,
+            borderWidth: 1, borderColor: colors.border, marginTop: spacing.xl, padding: spacing.base,
+          }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary, marginBottom: spacing.sm }}>
+              Reschedule
+            </Text>
+            <TextInput
+              value={rescheduleAt}
+              onChangeText={setRescheduleAt}
+              placeholder="YYYY-MM-DD HH:mm"
+              placeholderTextColor={colors.textMuted}
+              style={{
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+                paddingHorizontal: spacing.sm, paddingVertical: spacing.xs + 2, color: colors.textPrimary, marginBottom: spacing.sm,
+              }}
+            />
+            <TouchableOpacity onPress={handleReschedule} disabled={actionLoading}>
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary }}>Save new time</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {(session.checklist?.length || 0) > 0 && (
+          <View style={{
+            backgroundColor: colors.surface, borderRadius: radius.lg,
+            borderWidth: 1, borderColor: colors.border, marginTop: spacing.md, padding: spacing.base,
+          }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary, marginBottom: spacing.sm }}>
+              Guided checklist
+            </Text>
+            {session.checklist.map((item: any, index: number) => (
+              <TouchableOpacity
+                key={`${item.text}-${index}`}
+                onPress={() => toggleChecklistItem(index)}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.xs }}
+              >
+                <Ionicons
+                  name={item.done ? 'checkbox' : 'square-outline'}
+                  size={18}
+                  color={item.done ? colors.success : colors.textMuted}
+                  style={{ marginRight: spacing.sm }}
+                />
+                <Text style={{
+                  fontFamily: 'Inter_400Regular', fontSize: 13,
+                  color: item.done ? colors.textMuted : colors.textPrimary,
+                  textDecorationLine: item.done ? 'line-through' : 'none',
+                }}>
+                  {item.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Session notes */}
         <View style={{
@@ -359,6 +495,25 @@ export default function SessionDetailScreen() {
             <TouchableOpacity onPress={handleSubmitFeedback} style={{ marginTop: spacing.sm, alignSelf: 'flex-end' }}>
               <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary }}>Submit feedback</Text>
             </TouchableOpacity>
+            <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
+              <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs }}>
+                How good was this match overall? (1-5)
+              </Text>
+              <TextInput
+                value={qualityScore}
+                onChangeText={setQualityScore}
+                keyboardType="number-pad"
+                placeholder="4"
+                placeholderTextColor={colors.textMuted}
+                style={{
+                  backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+                  paddingHorizontal: spacing.sm, paddingVertical: spacing.xs + 2, color: colors.textPrimary, marginBottom: spacing.sm,
+                }}
+              />
+              <TouchableOpacity onPress={handleMatchQuality}>
+                <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.primary }}>Save match quality</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </ScrollView>
