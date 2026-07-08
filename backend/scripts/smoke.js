@@ -61,6 +61,22 @@ async function run() {
     if (!slots.ok) throw new Error(`Slots failed (${slots.status})`)
   }
 
+  const templates = await call('/sessions/templates', { headers: authHeaders })
+  if (!templates.ok) throw new Error(`Templates failed (${templates.status})`)
+
+  const funnel = await call('/analytics/funnel?days=7', { headers: authHeaders })
+  if (!funnel.ok) throw new Error(`Funnel failed (${funnel.status})`)
+
+  const track = await call('/analytics/track', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'onboarding_completed', properties: { source: 'smoke' } }),
+  })
+  if (!track.ok) throw new Error(`Track failed (${track.status})`)
+
+  const blocks = await call('/moderation/blocks', { headers: authHeaders })
+  if (!blocks.ok) throw new Error(`Blocks failed (${blocks.status})`)
+
   console.log('Smoke passed.')
   console.log(`- profile: ${me.data?.data?.username || 'n/a'}`)
   console.log(`- discover users: ${(discover.data?.data?.users || []).length}`)
@@ -69,6 +85,8 @@ async function run() {
   console.log(`- goals: ${(goals.data?.data || []).length}`)
   console.log(`- referrals: ${(referrals.data?.data?.referrals || []).length}`)
   console.log(`- activity events: ${(activity.data?.data || []).length}`)
+  console.log(`- templates: ${(templates.data?.data || []).length}`)
+  console.log(`- funnel steps: ${Object.keys(funnel.data?.data?.counts || {}).length}`)
 }
 
 run().catch((err) => {
