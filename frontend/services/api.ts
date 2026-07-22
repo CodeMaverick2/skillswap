@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import * as SecureStore from 'expo-secure-store'
 import Constants from 'expo-constants'
 import { useAuthStore } from '@/store/auth.store'
+import { deleteSecureItem, getSecureItem, setSecureItem } from './secureStorage'
 
 const getDevHostFromExpo = () => {
   const hostUri = Constants.expoConfig?.hostUri
@@ -57,7 +57,7 @@ const processQueue = (error: unknown, token: string | null = null) => {
 
 const clearSession = async () => {
   useAuthStore.getState().clearAuth()
-  await SecureStore.deleteItemAsync('refreshToken').catch(() => {})
+  await deleteSecureItem('refreshToken').catch(() => {})
 }
 
 api.interceptors.response.use(
@@ -107,7 +107,7 @@ api.interceptors.response.use(
     isRefreshing = true
 
     try {
-      const storedRefreshToken = await SecureStore.getItemAsync('refreshToken')
+      const storedRefreshToken = await getSecureItem('refreshToken')
       if (!storedRefreshToken) {
         // No refresh token yet (or already cleared); bubble original 401 cleanly.
         return Promise.reject(error)
@@ -119,7 +119,7 @@ api.interceptors.response.use(
       const newRefreshToken: string = data.data.refreshToken
 
       useAuthStore.getState().setAccessToken(newAccessToken)
-      await SecureStore.setItemAsync('refreshToken', newRefreshToken)
+      await setSecureItem('refreshToken', newRefreshToken)
 
       processQueue(null, newAccessToken)
       if (original.headers) original.headers.Authorization = `Bearer ${newAccessToken}`

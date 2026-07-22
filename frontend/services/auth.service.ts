@@ -1,7 +1,7 @@
 import axios from 'axios'
-import * as SecureStore from 'expo-secure-store'
 import api, { BASE_URL } from './api'
 import { useAuthStore, User } from '@/store/auth.store'
+import { deleteSecureItem, getSecureItem, setSecureItem } from './secureStorage'
 
 export interface RegisterData {
   email:           string
@@ -21,7 +21,7 @@ export const authService = {
   async register(data: RegisterData) {
     const response = await api.post('/auth/register', data)
     const { user, accessToken, refreshToken } = response.data.data
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken)
+    await setSecureItem(REFRESH_TOKEN_KEY, refreshToken)
     useAuthStore.getState().setAuth(user as User, accessToken as string)
     return response.data
   },
@@ -29,21 +29,21 @@ export const authService = {
   async login(data: LoginData) {
     const response = await api.post('/auth/login', data)
     const { user, accessToken, refreshToken } = response.data.data
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken)
+    await setSecureItem(REFRESH_TOKEN_KEY, refreshToken)
     useAuthStore.getState().setAuth(user as User, accessToken as string)
     return response.data
   },
 
   async logout() {
     try {
-      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY)
+      const refreshToken = await getSecureItem(REFRESH_TOKEN_KEY)
       if (refreshToken) {
         await api.post('/auth/logout', { refreshToken })
       }
     } catch {
       // Ignore — local state is cleared regardless
     } finally {
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {})
+      await deleteSecureItem(REFRESH_TOKEN_KEY).catch(() => {})
       useAuthStore.getState().clearAuth()
     }
   },
@@ -55,14 +55,14 @@ export const authService = {
     } catch {
       // Ignore errors — clear local state regardless
     } finally {
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {})
+      await deleteSecureItem(REFRESH_TOKEN_KEY).catch(() => {})
       useAuthStore.getState().clearAuth()
     }
   },
 
   /** Called on app start to restore session from a stored refresh token */
   async restoreSession(): Promise<boolean> {
-    const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY)
+    const storedRefresh = await getSecureItem(REFRESH_TOKEN_KEY)
     if (!storedRefresh) return false
 
     try {
@@ -73,7 +73,7 @@ export const authService = {
       const { accessToken, refreshToken: newRefresh } = data.data
 
       useAuthStore.getState().setAccessToken(accessToken as string)
-      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefresh as string)
+      await setSecureItem(REFRESH_TOKEN_KEY, newRefresh as string)
 
       // Now fetch the user profile with the fresh access token
       const profileRes = await api.get('/users/me')
@@ -81,7 +81,7 @@ export const authService = {
       return true
     } catch {
       // Refresh failed — clear stale token
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {})
+      await deleteSecureItem(REFRESH_TOKEN_KEY).catch(() => {})
       useAuthStore.getState().clearAuth()
       return false
     }

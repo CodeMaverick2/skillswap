@@ -6,9 +6,5 @@ coverage/
 *.log
 .DS_Store
 .vscode/
-.idea/
-PLAN.md
-memory/
-backend/test-api.js
-PROJECT_PROGRESS_REPORT.*
-scripts/generate-progress-pdf.py
+.expo/
+local-e2e/

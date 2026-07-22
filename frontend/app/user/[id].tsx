@@ -159,7 +159,12 @@ export default function UserProfileScreen() {
         </View>
 
         <View style={{ alignItems: 'center', marginBottom: spacing.xl }}>
-          <Avatar name={displayName} color={avatarColor} size={80} />
+          <Avatar
+            firstName={firstName || profile.username}
+            lastName={lastName || ''}
+            color={avatarColor}
+            size={80}
+          />
           <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 22, color: colors.textPrimary, marginTop: spacing.md }}>
             {displayName}
           </Text>
