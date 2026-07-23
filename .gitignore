@@ -9,6 +9,6 @@ coverage/
 .expo/
 local-e2e/
 
-# Local progress / report artifacts
-PROJECT_PROGRESS_REPORT.*
+# Local progress / report artifacts (keep docs/submission/ for handoff)
+/PROJECT_PROGRESS_REPORT.*
 scripts/generate-progress-pdf.py

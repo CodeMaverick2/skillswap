@@ -660,13 +660,14 @@ export default function ConversationScreen() {
               autoComplete="off"
               importantForAutofill="no"
               textContentType="none"
-              style={{
-                flex: 1, fontFamily: 'Inter_400Regular', fontSize: 15,
-                color: colors.textPrimary, maxHeight: 100,
-                paddingVertical: Platform.OS === 'web' ? 4 : (Platform.OS === 'ios' ? 4 : 6),
-                // @ts-expect-error web-only outline reset
-                outlineStyle: 'none',
-              }}
+              style={[
+                {
+                  flex: 1, fontFamily: 'Inter_400Regular', fontSize: 15,
+                  color: colors.textPrimary, maxHeight: 100,
+                  paddingVertical: Platform.OS === 'web' ? 4 : (Platform.OS === 'ios' ? 4 : 6),
+                },
+                Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null,
+              ]}
               selectionColor={colors.primary}
             />
           </View>
