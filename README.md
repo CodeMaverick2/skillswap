@@ -60,6 +60,21 @@ Live walkthrough of two users (Tejas & Aisha) completing a React ↔ Python swap
 
 If the inline player doesn’t show in your viewer, download the file from [`docs/demo/`](docs/demo/).
 
+### Android APK (preview)
+
+Installable preview build for evaluators:
+
+- **[Download `skillswap-preview.apk`](docs/submission/skillswap-preview.apk)** (~81 MB)
+- Or install from Expo: [EAS build page](https://expo.dev/accounts/tejas1114/projects/skillswap/builds/8d21a7d7-5675-406e-9abb-f60f870dabf8)
+
+Point the app at a running backend via `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_SOCKET_URL` (see [`frontend/.env.example`](frontend/.env.example)). For the seeded demo path, use the accounts in [`DEMO_USERS.md`](DEMO_USERS.md).
+
+### Progress report
+
+Course handoff write-up (features, week log, READY TO SUBMIT):
+
+- [`docs/submission/PROJECT_PROGRESS_REPORT.pdf`](docs/submission/PROJECT_PROGRESS_REPORT.pdf)
+
 ### Seeded demo accounts
 
 See [`DEMO_USERS.md`](DEMO_USERS.md) for personas and passwords.
@@ -96,10 +111,11 @@ cd backend && npm run seed && npm run smoke
 
 ```
 skillswap/
-├── backend/     # Express API + Jest (93+ tests)
-├── frontend/    # Expo app (auth, tabs, chat, sessions)
-├── docs/demo/   # Launch demo video + poster
-└── scripts/     # Dev helpers (e.g. mobile tunnel)
+├── backend/           # Express API + Jest (93+ tests)
+├── frontend/          # Expo app (auth, tabs, chat, sessions)
+├── docs/demo/         # Launch demo video + poster
+├── docs/submission/   # Progress report PDF + handoff assets
+└── scripts/           # Dev helpers (e.g. mobile tunnel)
 ```
 
 ---

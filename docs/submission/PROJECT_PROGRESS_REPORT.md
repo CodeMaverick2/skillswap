@@ -261,7 +261,7 @@ The app covers the full loop: sign up -> set skills -> discover matches -> send 
 | Submission README | Done |
 | Seeded demo users (`DEMO_USERS.md`) | Done |
 | Progress report (this PDF) | Done |
-| EAS preview APK | Done -> [`docs/submission/`](docs/submission/) (or linked release asset) |
+| EAS preview APK | Done -> [`docs/submission/skillswap-preview.apk`](docs/submission/skillswap-preview.apk) |
 
 **What “finished” means for this course:** the product loop is complete, June commitments are delivered, CI is green, and a recorded demo + README are in the repo for evaluation. Optional next-term items (Play Store, reminder cron, moderation queue UI) are explicitly out of scope for this submission.
 
