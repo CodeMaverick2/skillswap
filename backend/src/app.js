@@ -64,9 +64,10 @@ const isTest = process.env.NODE_ENV === 'test';
 const noopMiddleware = (_req, _res, next) => next();
 
 // Auth endpoints: strict (20 req / 15 min)
+// Local/demo capture needs more headroom than 20/15min (Playwright re-logins).
 const authLimiter = isTest ? noopMiddleware : rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: process.env.NODE_ENV === 'production' ? 20 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many auth requests. Please wait 15 minutes.' },

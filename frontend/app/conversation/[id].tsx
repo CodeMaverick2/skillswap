@@ -141,7 +141,14 @@ export default function ConversationScreen() {
           api.get(`/messages/${id}?limit=30&page=1`),
           api.get('/messages/conversations'),
         ])
-        setMessages(msgRes.data.data?.messages || [])
+        const loaded = msgRes.data.data?.messages || []
+        // Always chronological; protects against seed/system timestamp quirks
+        setMessages(
+          [...loaded].sort(
+            (a: ChatMessage, b: ChatMessage) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          )
+        )
         setPage(msgRes.data.data?.page || 1)
         setTotalPages(msgRes.data.data?.totalPages || 1)
 
@@ -634,14 +641,15 @@ export default function ConversationScreen() {
           paddingHorizontal: spacing.base, paddingVertical: spacing.sm,
           borderTopWidth: 1, borderTopColor: colors.border,
           backgroundColor: colors.surface,
-          paddingBottom: Platform.OS === 'ios' ? spacing.md : spacing.sm,
+          paddingBottom: Platform.OS === 'ios' ? spacing.md : spacing.sm + 4,
         }}>
           <View style={{
-            flex: 1, flexDirection: 'row', alignItems: 'flex-end',
+            flex: 1, flexDirection: 'row', alignItems: 'center',
             backgroundColor: colors.surfaceAlt, borderRadius: 22,
-            paddingHorizontal: spacing.md, paddingVertical: Platform.OS === 'ios' ? spacing.sm : 4,
+            paddingHorizontal: spacing.md,
+            paddingVertical: Platform.OS === 'web' ? 10 : (Platform.OS === 'ios' ? spacing.sm : 8),
             marginRight: spacing.sm, borderWidth: 1, borderColor: colors.border,
-            minHeight: 44, maxHeight: 120,
+            minHeight: 48, maxHeight: 120,
           }}>
             <TextInput
               value={text}
@@ -649,15 +657,22 @@ export default function ConversationScreen() {
               placeholder="Type a message..."
               placeholderTextColor={colors.textMuted}
               multiline
+              autoComplete="off"
+              importantForAutofill="no"
+              textContentType="none"
               style={{
                 flex: 1, fontFamily: 'Inter_400Regular', fontSize: 15,
                 color: colors.textPrimary, maxHeight: 100,
-                paddingVertical: Platform.OS === 'ios' ? 4 : 6,
+                paddingVertical: Platform.OS === 'web' ? 4 : (Platform.OS === 'ios' ? 4 : 6),
+                // @ts-expect-error web-only outline reset
+                outlineStyle: 'none',
               }}
               selectionColor={colors.primary}
             />
           </View>
           <TouchableOpacity
+            testID="send-message"
+            accessibilityLabel="Send message"
             activeOpacity={0.85}
             onPress={handleSend}
             disabled={!text.trim() || sending}

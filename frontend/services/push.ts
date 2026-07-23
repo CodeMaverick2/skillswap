@@ -26,6 +26,9 @@ async function loadNotifications() {
 }
 
 export async function registerForPushNotifications(): Promise<string | null> {
+  // Native-only — web has no push token path and can hang permission prompts
+  if (Platform.OS === 'web') return null
+
   const mod = await loadNotifications()
   if (!mod) return null
 
@@ -66,6 +69,8 @@ export async function registerForPushNotifications(): Promise<string | null> {
 export function addNotificationResponseListener(
   handler: (data: Record<string, unknown>) => void
 ) {
+  if (Platform.OS === 'web') return () => {}
+
   let sub: { remove: () => void } | null = null
   loadNotifications().then((mod) => {
     if (!mod) return

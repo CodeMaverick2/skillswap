@@ -8,3 +8,7 @@ coverage/
 .vscode/
 .expo/
 local-e2e/
+
+# Local progress / report artifacts
+PROJECT_PROGRESS_REPORT.*
+scripts/generate-progress-pdf.py
