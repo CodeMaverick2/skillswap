@@ -41,7 +41,8 @@ process.on('uncaughtException', (err) => {
 
 const startServer = async () => {
   await connectDB();
-  server.listen(PORT, () => {
+  // Bind 0.0.0.0 so PaaS hosts (Northflank / Railway / etc.) can reach the process
+  server.listen(PORT, '0.0.0.0', () => {
     logger.info(`SkillSwap API server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
   });
 };
