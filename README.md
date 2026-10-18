@@ -3,6 +3,18 @@
 **Teach what you know. Learn what you need.**  
 Peer-to-peer skill exchange — no courses, no fees, no money in the middle.
 
+## DevOps
+
+Needs Docker, kind, kubectl. Deploys API + Mongo on local kind.
+
+```
+./scripts/deploy-local.sh
+kubectl -n skillswap port-forward svc/skillswap-api 5000:5000
+curl http://localhost:5000/api/health
+```
+
+Rollback: `kubectl -n skillswap rollout undo deploy/skillswap-api`
+
 <p align="center">
   <a href="docs/demo/skillswap-launch-demo.mp4">
     <img src="docs/demo/poster.png" alt="SkillSwap launch demo" width="720" />

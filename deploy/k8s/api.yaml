@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skillswap-api
+  namespace: skillswap
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: skillswap-api
+  template:
+    metadata:
+      labels:
+        app: skillswap-api
+    spec:
+      containers:
+        - name: api
+          image: skillswap-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: skillswap-api-config
+            - secretRef:
+                name: skillswap-api-secrets
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skillswap-api
+  namespace: skillswap
+spec:
+  selector:
+    app: skillswap-api
+  ports:
+    - port: 5000
+      targetPort: 5000
