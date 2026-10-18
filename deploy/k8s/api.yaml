@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skillswap-api
+  namespace: skillswap
+  labels:
+    app: skillswap-api
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: skillswap-api
+  template:
+    metadata:
+      labels:
+        app: skillswap-api
+    spec:
+      initContainers:
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongodb 27017; do sleep 2; done"]
+      containers:
+        - name: api
+          image: skillswap-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: skillswap-api-config
+            - secretRef:
+                name: skillswap-api-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 8
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skillswap-api
+  namespace: skillswap
+spec:
+  type: ClusterIP
+  selector:
+    app: skillswap-api
+  ports:
+    - port: 5000
+      targetPort: http
