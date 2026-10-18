@@ -3,6 +3,45 @@
 **Teach what you know. Learn what you need.**  
 Peer-to-peer skill exchange — no courses, no fees, no money in the middle.
 
+## DevOps
+
+### Changes
+- Docker image for the API (`backend/Dockerfile`)
+- kind manifests for API + Mongo (`deploy/k8s/`)
+- deploy script (`scripts/deploy-local.sh`)
+- CI job that builds the API image (`.github/workflows/api-image.yml`)
+- ConfigMap + Secret for config/JWT/Mongo URI
+
+### Prerequisites
+Docker, kind, kubectl
+
+### Run
+```
+./scripts/deploy-local.sh
+kubectl -n skillswap port-forward svc/skillswap-api 5000:5000
+curl http://localhost:5000/api/health
+```
+
+Register/login against the same port to check the app.
+
+Rollback:
+```
+kubectl -n skillswap rollout undo deploy/skillswap-api
+```
+
+### Evidence
+- App: `/api/health` returns ok and db connected; register/login works after port-forward
+- Kubernetes: `kubectl -n skillswap get pods` shows API and Mongo Ready
+- CI/CD: GitHub Actions builds the image; deploy with `deploy-local.sh`
+- Observability: app logs via `kubectl -n skillswap logs deploy/skillswap-api`; health endpoint for probes
+- Security: secrets created as a K8s Secret (not in git); Mongo/API are ClusterIP only
+
+### Limits
+- local kind only (not cloud)
+- one API replica
+- no Prometheus/Grafana or tracing
+- mobile Expo app is not deployed to the cluster
+
 <p align="center">
   <a href="docs/demo/skillswap-launch-demo.mp4">
     <img src="docs/demo/poster.png" alt="SkillSwap launch demo" width="720" />
